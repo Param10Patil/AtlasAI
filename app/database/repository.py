@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
-from uuid import NAMESPACE_URL, uuid4, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from app.models.schemas import AnalysisResult, Incident
 
@@ -32,6 +32,23 @@ class HistoricalRecord:
     summary: str
     resolution: str
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class JobSnapshot:
+    id: UUID
+    client_request_id: UUID | None
+    description: str
+    status: str
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    cancel_requested: bool = False
+    attempt_count: int = 0
+    lease_owner: str | None = None
+    lease_expires_at: datetime | None = None
+    error_code: str | None = None
+    result_payload: dict[str, Any] | None = None
 
 
 class RepositoryError(RuntimeError):
@@ -170,6 +187,15 @@ class PostgresRepository:
             connection.commit()
         await asyncio.to_thread(write)
 
+    @staticmethod
+    def _job(row: tuple[Any, ...]) -> JobSnapshot:
+        return JobSnapshot(
+            id=row[0], client_request_id=row[1], description=row[2], status=row[3],
+            created_at=row[4], started_at=row[5], completed_at=row[6],
+            cancel_requested=bool(row[7]), attempt_count=int(row[8]), lease_owner=row[9],
+            lease_expires_at=row[10], error_code=row[11], result_payload=row[12] or None,
+        )
+
     async def save_result(self, result: AnalysisResult) -> None:
         payload = result.model_dump(mode='json')
         def write() -> None:
@@ -282,3 +308,90 @@ def seed_records(knowledge_dir: Path) -> tuple[list[KnowledgeRecord], list[Histo
         HistoricalRecord('history-auth', 'identity', 'authentication_failure', 'Token validation failed after key rotation', 'Corrected the audience configuration and rotated keys through the normal process', datetime(2025, 2, 18, tzinfo=timezone.utc)),
     ]
     return records, history
+
+
+class _PostgresQueueMethods:
+    async def create_job(self, description: str, client_request_id: UUID | None, capacity: int) -> tuple[JobSnapshot, bool]:
+        def write() -> tuple[JobSnapshot, bool]:
+            connection = self._connect()
+            with connection.cursor() as cursor:
+                cursor.execute('select id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload from analysis_jobs where client_request_id = %s', (client_request_id,))
+                existing = cursor.fetchone()
+                if existing:
+                    connection.commit()
+                    return self._job(existing), False
+                cursor.execute('select count(*) from analysis_jobs where status in (%s, %s)', ('queued', 'running'))
+                if int(cursor.fetchone()[0]) >= 1 + capacity:
+                    connection.rollback()
+                    raise RepositoryError('QUEUE_FULL')
+                now = datetime.now(timezone.utc)
+                job_id = uuid4()
+                cursor.execute('insert into analysis_jobs (id, client_request_id, description, status, created_at) values (%s, %s, %s, %s, %s)', (job_id, client_request_id, description, 'queued', now))
+                connection.commit()
+                return JobSnapshot(job_id, client_request_id, description, 'queued', now), True
+        return await asyncio.to_thread(write)
+
+    async def get_job(self, job_id: UUID) -> JobSnapshot | None:
+        def read() -> JobSnapshot | None:
+            with self._connect().cursor() as cursor:
+                cursor.execute('select id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload from analysis_jobs where id = %s', (job_id,))
+                row = cursor.fetchone()
+                return self._job(row) if row else None
+        return await asyncio.to_thread(read)
+
+    async def claim_job(self, lease_owner: str, lease_seconds: int = 180) -> JobSnapshot | None:
+        def claim() -> JobSnapshot | None:
+            connection = self._connect()
+            with connection.cursor() as cursor:
+                cursor.execute('update analysis_jobs set status = %s, lease_owner = null, lease_expires_at = null where status = %s and lease_expires_at < now()', ('queued', 'running'))
+                cursor.execute(
+                    'update analysis_jobs set status = %s, started_at = coalesce(started_at, now()), attempt_count = attempt_count + 1, lease_owner = %s, lease_expires_at = now() + make_interval(secs => %s) '
+                    'where id = (select id from analysis_jobs where status = %s and cancel_requested = false and not exists (select 1 from analysis_jobs where status = %s) order by created_at, id for update skip locked limit 1) '
+                    'returning id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload',
+                    ('running', lease_owner, lease_seconds, 'queued', 'running'),
+                )
+                row = cursor.fetchone()
+                connection.commit()
+                return self._job(row) if row else None
+        return await asyncio.to_thread(claim)
+
+    async def complete_job(self, job_id: UUID, result_payload: dict[str, Any]) -> None:
+        def write() -> None:
+            connection = self._connect()
+            with connection.cursor() as cursor:
+                cursor.execute('update analysis_jobs set status = %s, completed_at = now(), result_payload = %s, lease_owner = null, lease_expires_at = null where id = %s and status = %s', ('complete', json.dumps(result_payload), job_id, 'running'))
+            connection.commit()
+        await asyncio.to_thread(write)
+
+    async def fail_job(self, job_id: UUID, error_code: str) -> None:
+        def write() -> None:
+            connection = self._connect()
+            with connection.cursor() as cursor:
+                cursor.execute('update analysis_jobs set status = %s, completed_at = now(), error_code = %s, lease_owner = null, lease_expires_at = null where id = %s and status = %s', ('failed', error_code, job_id, 'running'))
+            connection.commit()
+        await asyncio.to_thread(write)
+
+    async def cancel_job(self, job_id: UUID) -> JobSnapshot | None:
+        def write() -> JobSnapshot | None:
+            connection = self._connect()
+            with connection.cursor() as cursor:
+                cursor.execute('update analysis_jobs set status = %s, completed_at = now(), cancel_requested = true, lease_owner = null, lease_expires_at = null where id = %s and status = %s', ('cancelled', job_id, 'queued'))
+                cursor.execute('update analysis_jobs set cancel_requested = true where id = %s and status = %s', (job_id, 'running'))
+                cursor.execute('select id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload from analysis_jobs where id = %s', (job_id,))
+                row = cursor.fetchone()
+                connection.commit()
+                return self._job(row) if row else None
+        return await asyncio.to_thread(write)
+
+    async def job_position(self, job: JobSnapshot) -> int | None:
+        if job.status != 'queued':
+            return 0 if job.status == 'running' else None
+        def read() -> int:
+            with self._connect().cursor() as cursor:
+                cursor.execute('select count(*) from analysis_jobs where status = %s and (created_at, id) <= (%s, %s)', ('queued', job.created_at, job.id))
+                return int(cursor.fetchone()[0])
+        return await asyncio.to_thread(read)
+
+
+for _method_name in ('create_job', 'get_job', 'claim_job', 'complete_job', 'fail_job', 'cancel_job', 'job_position'):
+    setattr(PostgresRepository, _method_name, getattr(_PostgresQueueMethods, _method_name))

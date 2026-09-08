@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.database.repository import JobSnapshot, PostgresRepository, RepositoryError
 from app.graph.workflow import WorkflowOutput
 from app.models.schemas import Incident
 
@@ -132,13 +133,146 @@ class InMemoryJobStore:
         record.changed.set()
 
 
+def _output_payload(output: WorkflowOutput) -> dict[str, Any]:
+    details = output.details
+    return {
+        'result': output.result.model_dump(mode='json'),
+        'details': {
+            'steps': list(details.steps), 'knowledge': details.knowledge,
+            'tools': list(details.tools), 'models': details.models,
+            'safety': list(details.safety), 'remediation': details.remediation,
+            'degraded': details.degraded,
+        },
+    }
+
+
+def _output_from_payload(payload: dict[str, Any]) -> WorkflowOutput:
+    from app.graph.workflow import WorkflowDetails
+    from app.models.schemas import AnalysisResult
+    return WorkflowOutput(
+        result=AnalysisResult.model_validate(payload['result']),
+        details=WorkflowDetails(
+            steps=tuple(payload['details'].get('steps', ())),
+            knowledge=dict(payload['details'].get('knowledge', {})),
+            tools=tuple(payload['details'].get('tools', ())),
+            models=dict(payload['details'].get('models', {})),
+            safety=tuple(payload['details'].get('safety', ())),
+            remediation=dict(payload['details'].get('remediation', {})),
+            degraded=bool(payload['details'].get('degraded', False)),
+        ),
+    )
+
+
+class PostgresJobStore:
+    '''Durable queue adapter; the database owns capacity, FIFO, and leases.'''
+
+    def __init__(self, repository: PostgresRepository, queue_capacity: int = 1):
+        self.repository = repository
+        self.queue_capacity = queue_capacity
+        self._jobs: dict[UUID, JobRecord] = {}
+        self._lock = asyncio.Lock()
+
+    @staticmethod
+    def _record(snapshot: JobSnapshot) -> JobRecord:
+        record = JobRecord(snapshot.id, snapshot.client_request_id, snapshot.description, snapshot.created_at)
+        record.status = snapshot.status
+        record.cancel_requested = snapshot.cancel_requested
+        record.error_code = snapshot.error_code
+        if snapshot.result_payload:
+            record.result = _output_from_payload(snapshot.result_payload)
+        return record
+
+    async def create(self, description: str, client_request_id: UUID | None) -> tuple[JobRecord, bool]:
+        try:
+            snapshot, created = await self.repository.create_job(description, client_request_id, self.queue_capacity)
+        except RepositoryError as exc:
+            if str(exc) == 'QUEUE_FULL':
+                raise QueueFullError from exc
+            raise
+        async with self._lock:
+            record = self._jobs.get(snapshot.id) or self._record(snapshot)
+            self._jobs[snapshot.id] = record
+            if created:
+                self._emit(record, 'queued', 0)
+            elif not record.events:
+                self._emit(record, snapshot.status, 0)
+            return record, created
+
+    async def get(self, job_id: UUID) -> JobRecord:
+        snapshot = await self.repository.get_job(job_id)
+        if snapshot is None:
+            raise JobNotFoundError
+        async with self._lock:
+            record = self._jobs.get(job_id) or self._record(snapshot)
+            self._jobs[job_id] = record
+            if snapshot.result_payload and record.result is None:
+                record.result = _output_from_payload(snapshot.result_payload)
+            record.status = snapshot.status
+            record.error_code = snapshot.error_code
+            record.cancel_requested = snapshot.cancel_requested
+            if not record.events:
+                self._emit(record, snapshot.status, 0)
+            return record
+
+    async def claim_next(self) -> JobRecord | None:
+        snapshot = await self.repository.claim_job('opspilot-api')
+        if snapshot is None:
+            return None
+        async with self._lock:
+            record = self._jobs.get(snapshot.id) or self._record(snapshot)
+            self._jobs[snapshot.id] = record
+            self._emit(record, 'running', 0)
+            return record
+
+    async def set_complete(self, record: JobRecord, output: WorkflowOutput) -> None:
+        await self.repository.complete_job(record.job_id, _output_payload(output))
+        async with self._lock:
+            record.result = output
+            self._emit(record, 'complete', 0)
+
+    async def set_failed(self, record: JobRecord, code: str = 'INVESTIGATION_FAILED') -> None:
+        await self.repository.fail_job(record.job_id, code)
+        async with self._lock:
+            record.error_code = code
+            self._emit(record, 'failed', 0)
+
+    async def cancel(self, job_id: UUID) -> JobRecord:
+        snapshot = await self.repository.cancel_job(job_id)
+        if snapshot is None:
+            raise JobNotFoundError
+        async with self._lock:
+            record = self._jobs.get(job_id) or self._record(snapshot)
+            self._jobs[job_id] = record
+            record.cancel_requested = True
+            if snapshot.status == 'cancelled':
+                self._emit(record, 'cancelled', 0)
+            return record
+
+    async def position(self, record: JobRecord) -> int | None:
+        snapshot = await self.repository.get_job(record.job_id)
+        if snapshot is None:
+            return None
+        return await self.repository.job_position(snapshot)
+
+    @staticmethod
+    def _emit(record: JobRecord, status: str, position: int) -> None:
+        record.status = status
+        event: dict[str, Any] = {'job_id': str(record.job_id), 'status': status, 'position': position}
+        if status == 'complete' and record.result is not None:
+            event['result'] = record.result
+        if status == 'failed':
+            event['error'] = {'code': record.error_code or 'INVESTIGATION_FAILED'}
+        record.events.append(event)
+        record.changed.set()
+
+
 class AnalysisCoordinator:
     '''Serializes workflow execution and exposes queue-safe lifecycle events.'''
 
-    def __init__(self, workflow: Any, *, queue_capacity: int = 1, timeout_seconds: float = 120):
+    def __init__(self, workflow: Any, *, queue_capacity: int = 1, timeout_seconds: float = 120, store: Any | None = None):
         self.workflow = workflow
         self.timeout_seconds = timeout_seconds
-        self.store = InMemoryJobStore(queue_capacity)
+        self.store = store or InMemoryJobStore(queue_capacity)
         self._drain_task: asyncio.Task[None] | None = None
         self._running_tasks: dict[UUID, asyncio.Task[None]] = {}
 

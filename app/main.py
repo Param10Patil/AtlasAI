@@ -13,9 +13,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app import __version__
 from app.agents.ports import KnowledgeContext, ResolutionContext, TriageContext
+from app.database.repository import PostgresRepository
 from app.services.queue import (
     AnalysisCoordinator,
     JobNotFoundError,
+    PostgresJobStore,
     QueueFullError,
 )
 from app.services.runtime import ApplicationRuntime, build_runtime
@@ -91,10 +93,12 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         if active_runtime is None:
             active_runtime = await build_runtime()
         app.state.runtime = active_runtime
+        durable_store = PostgresJobStore(active_runtime.repository, active_runtime.settings.queue_capacity) if isinstance(active_runtime.repository, PostgresRepository) else None
         app.state.coordinator = AnalysisCoordinator(
             active_runtime.workflow,
             queue_capacity=active_runtime.settings.queue_capacity,
             timeout_seconds=120,
+            store=durable_store,
         )
         yield
 
@@ -125,7 +129,6 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
     async def analyze(payload: AnalyzeRequest, request: Request) -> dict[str, Any]:
         current: ApplicationRuntime = request.app.state.runtime
         if not current.ready:
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=503, content={'error': {'code': 'DEPENDENCY_UNAVAILABLE', 'message': 'OpsPilot is not ready. Please try again.', 'retryable': True}})
         try:
             record, _ = await request.app.state.coordinator.submit(payload.description)

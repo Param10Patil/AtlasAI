@@ -46,3 +46,34 @@ create table if not exists analysis_results (
   payload jsonb not null,
   created_at timestamptz not null
 );
+
+create table if not exists resolutions (
+  id uuid primary key,
+  incident_id uuid references incidents(id) on delete set null,
+  status varchar(16) not null check (status in ('proposed', 'approved', 'executed', 'failed')),
+  category varchar(80) not null,
+  confidence double precision not null check (confidence between 0 and 1),
+  payload jsonb not null,
+  created_at timestamptz not null,
+  completed_at timestamptz
+);
+
+create table if not exists analysis_jobs (
+  id uuid primary key,
+  client_request_id uuid unique,
+  description text not null check (char_length(description) between 1 and 4000),
+  status varchar(16) not null check (status in ('queued', 'running', 'complete', 'failed', 'cancelled')),
+  created_at timestamptz not null,
+  started_at timestamptz,
+  completed_at timestamptz,
+  cancel_requested boolean not null default false,
+  attempt_count integer not null default 0 check (attempt_count between 0 and 3),
+  lease_owner varchar(120),
+  lease_expires_at timestamptz,
+  error_code varchar(80),
+  result_payload jsonb
+);
+
+create index if not exists analysis_jobs_fifo_idx on analysis_jobs(status, created_at, id);
+create unique index if not exists analysis_jobs_one_running_idx
+  on analysis_jobs(status) where status = 'running';
