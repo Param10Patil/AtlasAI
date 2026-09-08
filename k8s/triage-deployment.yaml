@@ -10,10 +10,18 @@ spec:
   template:
     metadata: {labels: {app: opspilot-triage}}
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: triage
           image: opspilot:dev
-          args: [uvicorn, app.main:app, --host, 0.0.0.0, --port, '8080']
+          command: [python, -m, app.run, --role, triage]
           resources:
             requests: {cpu: 50m, memory: 96Mi}
             limits: {cpu: 500m, memory: 384Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          readinessProbe: {httpGet: {path: /api/ready, port: 8080}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /api/health, port: 8080}, periodSeconds: 10}

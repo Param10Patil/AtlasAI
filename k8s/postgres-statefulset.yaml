@@ -11,9 +11,11 @@ spec:
   template:
     metadata: {labels: {app: opspilot-postgres}}
     spec:
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: postgres
-          image: pgvector/pgvector:pg16
+          image: pgvector/pgvector@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
           ports:
             - containerPort: 5432
           env:
@@ -29,6 +31,9 @@ spec:
           resources:
             requests: {cpu: 100m, memory: 256Mi}
             limits: {cpu: '1', memory: 768Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
           readinessProbe:
             exec:
               command: [pg_isready, -U, opspilot, -d, opspilot]
