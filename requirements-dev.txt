@@ -1,6 +1,5 @@
-# Development-only tools; resolve and pin exact versions in docs/development-notes.md.
 -r requirements.txt
-pytest
-pytest-asyncio
-httpx
-ruff
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1
+ruff==0.16.6

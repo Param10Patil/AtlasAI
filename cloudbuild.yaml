@@ -1,0 +1,19 @@
+substitutions:
+  _REGION: us-central1
+  _REPOSITORY: opspilot
+  _IMAGE_TAG: manual
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - \${_REGION}-docker.pkg.dev/$PROJECT_ID/\${_REPOSITORY}/opspilot:\${_IMAGE_TAG}
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - \${_REGION}-docker.pkg.dev/$PROJECT_ID/\${_REPOSITORY}/opspilot:\${_IMAGE_TAG}
+images:
+  - \${_REGION}-docker.pkg.dev/$PROJECT_ID/\${_REPOSITORY}/opspilot:\${_IMAGE_TAG}
+options:
+  logging: CLOUD_LOGGING_ONLY

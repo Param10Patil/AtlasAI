@@ -1,9 +1,8 @@
-# Runtime dependencies; exact versions are pinned during the dependency phase.
-fastapi
-uvicorn
-pydantic
-psycopg[binary]
-pgvector
-langchain-core
-langgraph
-mcp
+fastapi==0.141.1
+uvicorn==0.52.4
+pydantic==2.13.5
+psycopg[binary]==3.3.5
+pgvector==0.5.0
+langchain-core==1.6.2
+langgraph==1.2.11
+mcp==2.2.0

@@ -8,4 +8,4 @@ COPY app ./app
 COPY static ./static
 COPY knowledge ./knowledge
 EXPOSE 8080
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port \${PORT:-8080}

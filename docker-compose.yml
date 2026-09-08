@@ -5,11 +5,17 @@ services:
       OPSPILOT_APP_ENV: development
       OPSPILOT_EXECUTION_MODE: in_process
       OPSPILOT_DATABASE_URL: postgresql+psycopg://opspilot:opspilot@postgres:5432/opspilot
+      PORT: 8080
     ports:
-      - "8080:8080"
+      - 8080:8080
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   postgres:
     image: pgvector/pgvector:pg16
     environment:
@@ -17,9 +23,9 @@ services:
       POSTGRES_PASSWORD: opspilot
       POSTGRES_DB: opspilot
     ports:
-      - "5432:5432"
+      - 5432:5432
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U opspilot -d opspilot"]
+      test: [CMD-SHELL, pg_isready -U opspilot -d opspilot]
       interval: 5s
       timeout: 3s
       retries: 10
