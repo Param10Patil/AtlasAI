@@ -207,7 +207,9 @@ class PostgresRepository:
                     chunk_uuid = uuid5(NAMESPACE_URL, record.id)
                     cursor.execute(
                         'insert into knowledge_documents (id, title, source, content, metadata, checksum) '
-                        'values (%s, %s, %s, %s, %s, %s) on conflict (source) do update set content = excluded.content, metadata = excluded.metadata',
+                        'values (%s, %s, %s, %s, %s, %s) on conflict (id) do update set '
+                        'title = excluded.title, source = excluded.source, content = excluded.content, '
+                        'metadata = excluded.metadata, checksum = excluded.checksum',
                         (document_uuid, record.title, record.source, record.content, json.dumps(record.metadata), record.metadata.get('checksum', record.document_id)),
                     )
                     vector = str(list(record.embedding)) if record.embedding else None
