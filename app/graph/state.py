@@ -1,13 +1,14 @@
-"""Serializable workflow state declaration.
+'''Serializable workflow state declaration.
 
-Nodes will return partial updates; projectors in the graph keep each agent's
-input smaller than this orchestration state.
-"""
+Nodes return partial updates and projectors keep each agent input smaller than
+this orchestration state.
+'''
 
-from typing import TypedDict
+from typing import Any, TypedDict
 from uuid import UUID
 
 from app.agents.ports import EvidenceBundle, TriageResult
+from app.guardrails.contracts import GuardrailDecision
 from app.models.schemas import AnalysisResult
 
 
@@ -17,5 +18,7 @@ class WorkflowState(TypedDict, total=False):
     triage_result: TriageResult
     evidence: EvidenceBundle
     resolution: AnalysisResult
+    guardrail_decision: GuardrailDecision
     errors: list[str]
     degraded: bool
+    metadata: dict[str, Any]
