@@ -1,0 +1,1 @@
+"""Configuration boundaries for OpsPilot."""

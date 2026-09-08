@@ -1,0 +1,6 @@
+# Optional training environment; never install this in the runtime image.
+torch
+transformers
+peft
+datasets
+mlflow

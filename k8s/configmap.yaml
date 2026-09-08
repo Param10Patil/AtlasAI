@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opspilot-config
+  namespace: opspilot
+data:
+  OPSPILOT_APP_ENV: kubernetes
+  OPSPILOT_EXECUTION_MODE: http
+  OPSPILOT_LOG_LEVEL: INFO
+  OPSPILOT_DATABASE_URL: postgresql+psycopg://opspilot@postgres:5432/opspilot

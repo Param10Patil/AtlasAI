@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: opspilot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opspilot-api
+  template:
+    metadata:
+      labels:
+        app: opspilot-api
+    spec:
+      containers:
+        - name: api
+          image: opspilot:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: opspilot-config
+            - secretRef:
+                name: opspilot-secrets
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 384Mi}
+          readinessProbe:
+            httpGet: {path: /api/health, port: 8080}
+          livenessProbe:
+            httpGet: {path: /api/health, port: 8080}

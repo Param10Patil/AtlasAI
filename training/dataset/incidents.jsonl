@@ -1,0 +1,6 @@
+{"text":"The checkout API returns 503 immediately after the release.","label":"availability_issue"}
+{"text":"Database connections are exhausted and requests cannot acquire one.","label":"database_failure"}
+{"text":"Users receive invalid credentials after enabling the new login flow.","label":"authentication_failure"}
+{"text":"Latency increased after a deployment and p95 is above the SLO.","label":"performance_issue"}
+{"text":"Pods cannot reach the payment service over the cluster network.","label":"network_failure"}
+{"text":"The new image crashes during startup in production.","label":"deployment_failure"}

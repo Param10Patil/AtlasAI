@@ -1,0 +1,6 @@
+# Development-only tools; resolve and pin exact versions in docs/development-notes.md.
+-r requirements.txt
+pytest
+pytest-asyncio
+httpx
+ruff

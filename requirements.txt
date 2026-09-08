@@ -1,0 +1,9 @@
+# Runtime dependencies; exact versions are pinned during the dependency phase.
+fastapi
+uvicorn
+pydantic
+psycopg[binary]
+pgvector
+langchain-core
+langgraph
+mcp

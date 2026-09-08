@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: opspilot
+spec:
+  selector:
+    app: opspilot-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
