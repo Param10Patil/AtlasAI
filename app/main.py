@@ -1,16 +1,23 @@
 '''FastAPI application boundary for OpsPilot.'''
 
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app import __version__
 from app.agents.ports import KnowledgeContext, ResolutionContext, TriageContext
+from app.services.queue import (
+    AnalysisCoordinator,
+    JobNotFoundError,
+    QueueFullError,
+)
 from app.services.runtime import ApplicationRuntime, build_runtime
 
 
@@ -26,6 +33,10 @@ class AnalyzeRequest(BaseModel):
         if not value:
             raise ValueError('description must contain non-whitespace text')
         return value
+
+
+class JobRequest(AnalyzeRequest):
+    client_request_id: UUID | None = None
 
 
 def _public_payload(output: Any) -> dict[str, Any]:
@@ -55,6 +66,13 @@ def _public_payload(output: Any) -> dict[str, Any]:
     }
 
 
+def _public_event(event: dict[str, Any]) -> dict[str, Any]:
+    event = dict(event)
+    if event.get('result') is not None:
+        event['result'] = _public_payload(event['result'])
+    return event
+
+
 def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
     active_runtime = runtime
 
@@ -64,6 +82,11 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         if active_runtime is None:
             active_runtime = await build_runtime()
         app.state.runtime = active_runtime
+        app.state.coordinator = AnalysisCoordinator(
+            active_runtime.workflow,
+            queue_capacity=active_runtime.settings.queue_capacity,
+            timeout_seconds=120,
+        )
         yield
 
     app = FastAPI(title='OpsPilot', version=__version__, lifespan=lifespan)
@@ -83,7 +106,6 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
     async def ready(request: Request) -> dict[str, Any]:
         current: ApplicationRuntime = request.app.state.runtime
         if not current.ready:
-            from fastapi.responses import JSONResponse
             return JSONResponse(
                 status_code=503,
                 content={'status': 'not_ready', 'message': current.readiness_message, 'optional': {'mlflow': 'ignored', 'lora': 'optional'}},
@@ -97,15 +119,66 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
             from fastapi.responses import JSONResponse
             return JSONResponse(status_code=503, content={'error': {'code': 'DEPENDENCY_UNAVAILABLE', 'message': 'OpsPilot is not ready. Please try again.', 'retryable': True}})
         try:
-            output = await current.analyze(payload.description)
+            record, _ = await request.app.state.coordinator.submit(payload.description)
+            output = await request.app.state.coordinator.wait(record)
             return _public_payload(output)
-        except TimeoutError:
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=504, content={'error': {'code': 'WORKFLOW_TIMEOUT', 'message': 'The investigation took too long. Please try again.', 'retryable': True}})
+        except QueueFullError:
+            return JSONResponse(status_code=429, content={'error': {'code': 'QUEUE_FULL', 'message': 'One investigation is running and the bounded queue is full.', 'retryable': True}})
+        except RuntimeError as exc:
+            code = str(exc)
+            if code == 'WORKFLOW_TIMEOUT':
+                return JSONResponse(status_code=504, content={'error': {'code': code, 'message': 'The investigation took too long. Please try again.', 'retryable': True}})
+            if code == 'CANCELLED':
+                return JSONResponse(status_code=409, content={'error': {'code': code, 'message': 'The investigation was cancelled.', 'retryable': False}})
+            return JSONResponse(status_code=500, content={'error': {'code': code if code.isupper() else 'INVESTIGATION_FAILED', 'message': 'OpsPilot could not complete the investigation. Please try again.', 'retryable': True}})
         # Keep unexpected provider/database details out of the public response.
         except Exception:  # noqa: BLE001
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=500, content={'error': {'code': 'INVESTIGATION_FAILED', 'message': 'OpsPilot could not complete the investigation. Please try again.', 'retryable': True}})
+
+    @app.post('/api/incidents/analyze/jobs', status_code=202)
+    async def create_job(payload: JobRequest, request: Request) -> dict[str, Any]:
+        current: ApplicationRuntime = request.app.state.runtime
+        if not current.ready:
+            return JSONResponse(status_code=503, content={'error': {'code': 'DEPENDENCY_UNAVAILABLE', 'message': 'OpsPilot is not ready. Please try again.', 'retryable': True}})
+        try:
+            record, _ = await request.app.state.coordinator.submit(payload.description, payload.client_request_id)
+            return _public_event(await request.app.state.coordinator.public_status(record))
+        except QueueFullError:
+            return JSONResponse(status_code=429, content={'error': {'code': 'QUEUE_FULL', 'message': 'One investigation is running and the bounded queue is full.', 'retryable': True}})
+
+    @app.get('/api/incidents/analyze/jobs/{job_id}')
+    async def job_status(job_id: UUID, request: Request) -> dict[str, Any]:
+        try:
+            record = await request.app.state.coordinator.store.get(job_id)
+        except JobNotFoundError:
+            return JSONResponse(status_code=404, content={'error': {'code': 'JOB_NOT_FOUND', 'message': 'The investigation job was not found.', 'retryable': False}})
+        return _public_event(await request.app.state.coordinator.public_status(record))
+
+    @app.delete('/api/incidents/analyze/jobs/{job_id}')
+    async def cancel_job(job_id: UUID, request: Request) -> dict[str, Any]:
+        try:
+            record = await request.app.state.coordinator.cancel(job_id)
+        except JobNotFoundError:
+            return JSONResponse(status_code=404, content={'error': {'code': 'JOB_NOT_FOUND', 'message': 'The investigation job was not found.', 'retryable': False}})
+        return _public_event(await request.app.state.coordinator.public_status(record))
+
+    @app.get('/api/incidents/analyze/jobs/{job_id}/events')
+    async def job_events(job_id: UUID, request: Request) -> StreamingResponse:
+        try:
+            record = await request.app.state.coordinator.store.get(job_id)
+        except JobNotFoundError:
+            return JSONResponse(status_code=404, content={'error': {'code': 'JOB_NOT_FOUND', 'message': 'The investigation job was not found.', 'retryable': False}})
+
+        async def stream():
+            try:
+                async for event in request.app.state.coordinator.events(record):
+                    if await request.is_disconnected():
+                        break
+                    yield json.dumps(_public_event(event), separators=(',', ':')) + '\n'
+            except RuntimeError:
+                yield json.dumps({'job_id': str(job_id), 'status': 'stream_unavailable'}) + '\n'
+
+        return StreamingResponse(stream(), media_type='application/x-ndjson')
 
     @app.post('/internal/v1/triage')
     async def internal_triage(payload: TriageContext, request: Request) -> dict[str, Any]:

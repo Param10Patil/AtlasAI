@@ -1,3 +1,6 @@
+import asyncio
+from uuid import UUID
+
 import pytest
 from pydantic import ValidationError
 
@@ -12,13 +15,15 @@ from app.agents.resolution import ResolutionAgent
 from app.agents.triage import TriageAgent
 from app.database.repository import PostgresRepository
 from app.database.seed import build_seed_repository
+from app.graph.workflow import InvestigationWorkflow
 from app.guardrails.contracts import GuardrailContext
 from app.guardrails.service import GuardrailService
 from app.mcp.server import MCPToolClient, MCPToolServer
-from app.models.schemas import AnalysisResult, RecommendedAction, Severity
+from app.models.schemas import AnalysisResult, Incident, RecommendedAction, Severity
 from app.rag.service import RAGService
-from app.remediation.contracts import RemediationContext
+from app.remediation.contracts import RemediationContext, RemediationResult
 from app.remediation.service import RemediationAgent, SimulatedActionExecutor
+from app.services.queue import AnalysisCoordinator, QueueFullError
 from app.services.runtime import build_runtime
 
 
@@ -146,3 +151,104 @@ async def test_remediation_is_allowlisted_mcp_mediated_and_health_verified():
     assert result.health_verified
     assert executor.executions == [('rollback_deployment', 'payment')]
     assert client.calls[-2:] == ['execute_safe_action', 'verify_health']
+
+
+@pytest.mark.asyncio
+async def test_mcp_rejects_non_allowlisted_remediation_action():
+    repository = await build_seed_repository()
+    server = MCPToolServer(RAGService(repository), remediation_executor=SimulatedActionExecutor())
+    response = await server.handle({
+        'jsonrpc': '2.0',
+        'id': 9,
+        'method': 'tools/call',
+        'params': {'name': 'execute_safe_action', 'arguments': {'action': 'delete_database', 'target': 'prod'}},
+    })
+    assert response['error']['code'] == -32602
+
+
+@pytest.mark.asyncio
+async def test_analysis_queue_is_fifo_bounded_and_idempotent():
+    class FakeWorkflow:
+        def __init__(self):
+            self.calls = []
+
+        async def analyze(self, incident):
+            self.calls.append(incident.description)
+            await asyncio.sleep(0.01)
+            return object()
+
+    workflow = FakeWorkflow()
+    coordinator = AnalysisCoordinator(workflow, queue_capacity=1)
+    first_id = UUID('22222222-2222-4222-8222-222222222222')
+    first, created = await coordinator.submit('first', first_id)
+    assert created
+    second, created = await coordinator.submit('second')
+    assert created
+    duplicate, created = await coordinator.submit('ignored', first_id)
+    assert not created
+    assert duplicate.job_id == first.job_id
+    with pytest.raises(QueueFullError):
+        await coordinator.submit('third')
+    await coordinator.wait(first)
+    await coordinator.wait(second)
+    assert workflow.calls == ['first', 'second']
+
+
+@pytest.mark.asyncio
+async def test_running_job_can_be_cancelled_without_leaking_incident_text():
+    started = asyncio.Event()
+
+    class SlowWorkflow:
+        async def analyze(self, incident):
+            started.set()
+            await asyncio.sleep(30)
+
+    coordinator = AnalysisCoordinator(SlowWorkflow(), queue_capacity=0)
+    record, _ = await coordinator.submit('secret incident text')
+    await asyncio.wait_for(started.wait(), timeout=1)
+    cancelled = await coordinator.cancel(record.job_id)
+    assert cancelled.status == 'cancelled'
+    with pytest.raises(RuntimeError, match='CANCELLED'):
+        await coordinator.wait(record)
+    assert 'secret incident text' not in str(record.events)
+
+
+@pytest.mark.asyncio
+async def test_failed_remediation_rediagnoses_once_then_stops():
+    repository = await build_seed_repository()
+    mcp = MCPToolClient(server=MCPToolServer(RAGService(repository)))
+
+    class FlakyRemediation:
+        def __init__(self):
+            self.calls = 0
+
+        async def remediate(self, context, *, enabled):
+            self.calls += 1
+            if self.calls == 1:
+                return RemediationResult(
+                    status='failed',
+                    action='rollback_deployment',
+                    target=context.service or 'payment',
+                    message='health check did not pass',
+                    retry_recommended=True,
+                )
+            return RemediationResult(
+                status='verified',
+                action='restart_pod',
+                target=context.service or 'payment',
+                message='health recovered',
+                health_verified=True,
+            )
+
+    remediation = FlakyRemediation()
+    workflow = InvestigationWorkflow(
+        TriageAgent(),
+        KnowledgeAgent(mcp),
+        ResolutionAgent(),
+        repository,
+        remediation_agent=remediation,
+        remediation_enabled=True,
+    )
+    output = await workflow.analyze(Incident(description='payment API returns 503 after deployment'))
+    assert remediation.calls == 2
+    assert output.details.remediation['status'] == 'verified'

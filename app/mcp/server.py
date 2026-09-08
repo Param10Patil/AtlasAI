@@ -8,6 +8,8 @@ expose the same handler over stdio or HTTP.
 import json
 from typing import Any
 
+from pydantic import ValidationError
+
 from app.mcp.contracts import (
     ExecuteSafeActionInput,
     GetIncidentHistoryInput,
@@ -111,16 +113,19 @@ class MCPToolServer:
         elif method == 'tools/call':
             name = params.get('name')
             arguments = params.get('arguments') or {}
-            if name == 'search_runbooks':
-                payload = await self.search_runbooks(arguments.get('query', ''), arguments.get('limit', 3))
-            elif name == 'get_incident_history':
-                payload = await self.get_incident_history(arguments.get('service'), arguments.get('category', ''), arguments.get('limit', 3))
-            elif name == 'execute_safe_action':
-                payload = await self.execute_safe_action(arguments.get('action', ''), arguments.get('target', ''))
-            elif name == 'verify_health':
-                payload = await self.verify_health(arguments.get('target', ''))
-            else:
-                return {'jsonrpc': '2.0', 'id': request_id, 'error': {'code': -32602, 'message': 'unknown tool'}}
+            try:
+                if name == 'search_runbooks':
+                    payload = await self.search_runbooks(arguments.get('query', ''), arguments.get('limit', 3))
+                elif name == 'get_incident_history':
+                    payload = await self.get_incident_history(arguments.get('service'), arguments.get('category', ''), arguments.get('limit', 3))
+                elif name == 'execute_safe_action':
+                    payload = await self.execute_safe_action(arguments.get('action', ''), arguments.get('target', ''))
+                elif name == 'verify_health':
+                    payload = await self.verify_health(arguments.get('target', ''))
+                else:
+                    return {'jsonrpc': '2.0', 'id': request_id, 'error': {'code': -32602, 'message': 'unknown tool'}}
+            except ValidationError:
+                return {'jsonrpc': '2.0', 'id': request_id, 'error': {'code': -32602, 'message': 'invalid tool arguments'}}
             result = {
                 'content': [{'type': 'text', 'text': json.dumps(payload)}],
                 'structuredContent': payload,

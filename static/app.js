@@ -5,7 +5,7 @@ const progressPanel = document.querySelector('#progress-panel');
 const errorPanel = document.querySelector('#error-panel');
 const resultPanel = document.querySelector('#result-panel');
 const errorMessage = document.querySelector('#error-message');
-const state = { activeRequestId: null, controller: null, lastDescription: '' };
+const state = { activeRequestId: null, controller: null, lastDescription: '', jobId: null };
 
 const show = (element, visible) => { if (element) element.hidden = !visible; };
 const escapeHtml = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;').replace(new RegExp(String.fromCharCode(34), 'g'), '&quot;');
@@ -40,20 +40,60 @@ const renderResult = (payload) => {
   show(resultPanel, true);
 };
 
+const readEvents = async (response, requestId) => {
+  if (!response.body) throw new Error('Live progress is unavailable. Please try again.');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalPayload = null;
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.trim() || state.activeRequestId !== requestId) continue;
+      const event = JSON.parse(line);
+      if (event.status === 'queued') {
+        document.querySelector('#progress-message').textContent = event.position ? 'Another investigation is running. You are next in line (' + event.position + ').' : 'Your investigation is queued.';
+      } else if (event.status === 'running') {
+        document.querySelector('#progress-message').textContent = 'Checking the incident details and relevant evidence.';
+      } else if (event.status === 'complete') {
+        finalPayload = event.result;
+      } else if (event.status === 'failed') {
+        throw new Error('OpsPilot could not complete the investigation. Please try again.');
+      } else if (event.status === 'cancelled') {
+        throw new Error('The investigation was cancelled.');
+      }
+    }
+  }
+  if (buffer.trim() && state.activeRequestId === requestId) {
+    const event = JSON.parse(buffer);
+    if (event.status === 'complete') finalPayload = event.result;
+  }
+  return finalPayload;
+};
+
 const runAnalysis = async (description) => {
   const requestId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + String(Math.random());
   state.activeRequestId = requestId;
   state.controller = new AbortController();
+  state.jobId = null;
   state.lastDescription = description;
   show(errorPanel, false);
   show(resultPanel, false);
   setLoading(true);
   try {
-    const response = await fetch('/api/incidents/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description }), signal: state.controller.signal });
+    const response = await fetch('/api/incidents/analyze/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description, client_request_id: requestId }), signal: state.controller.signal });
     const payload = await response.json().catch(() => ({}));
     if (state.activeRequestId !== requestId) return;
     if (!response.ok) throw new Error(payload.error?.message || 'OpsPilot could not complete the investigation.');
-    renderResult(payload);
+    state.jobId = payload.job_id;
+    const eventsResponse = await fetch(payload.events_url, { signal: state.controller.signal });
+    if (!eventsResponse.ok) throw new Error('Live progress is unavailable. Please try again.');
+    const result = await readEvents(eventsResponse, requestId);
+    if (result) renderResult(result);
   } catch (error) {
     if (error.name === 'AbortError' || state.activeRequestId !== requestId) return;
     errorMessage.textContent = error.message || 'Please try again.';
@@ -73,3 +113,8 @@ form?.addEventListener('submit', (event) => {
 });
 document.querySelector('#retry-button')?.addEventListener('click', () => runAnalysis(state.lastDescription || input.value.trim()));
 document.querySelector('#new-analysis')?.addEventListener('click', () => { show(resultPanel, false); input.value = ''; input.focus(); });
+document.querySelector('#cancel-analysis')?.addEventListener('click', async () => {
+  if (!state.jobId) return;
+  try { await fetch('/api/incidents/analyze/jobs/' + state.jobId, { method: 'DELETE' }); } catch (_) { /* the local abort still stops the stream */ }
+  state.controller?.abort();
+});

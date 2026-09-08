@@ -99,8 +99,12 @@ class InvestigationWorkflow:
             decision = state['guardrail_decision']
             triage = state['triage_result']
             evidence = state['evidence']
+            attempts = int(state.get('remediation_attempts', 0)) + 1
             if not decision.accepted or self.remediation_agent is None:
-                return {'remediation': RemediationResult(status='disabled', message='Remediation is not enabled for this result.')}
+                return {
+                    'remediation': RemediationResult(status='disabled', message='Remediation is not enabled for this result.'),
+                    'remediation_attempts': attempts,
+                }
             context = RemediationContext(
                 incident_summary=triage.incident_summary,
                 service=triage.service,
@@ -108,7 +112,17 @@ class InvestigationWorkflow:
                 probable_causes=tuple(triage.likely_causes),
                 evidence_ids=tuple(item.id for item in evidence.runbook_evidence),
             )
-            return {'remediation': await self.remediation_agent.remediate(context, enabled=self.remediation_enabled)}
+            return {
+                'remediation': await self.remediation_agent.remediate(context, enabled=self.remediation_enabled),
+                'remediation_attempts': attempts,
+            }
+
+        def remediation_route(state: dict[str, Any]) -> str:
+            remediation = state.get('remediation')
+            attempts = int(state.get('remediation_attempts', 0))
+            if remediation is not None and remediation.retry_recommended and attempts < 2:
+                return 'rediagnose'
+            return 'done'
 
         builder.add_node('triage', triage_node)
         builder.add_node('knowledge', knowledge_node)
@@ -120,7 +134,11 @@ class InvestigationWorkflow:
         builder.add_edge('knowledge', 'resolution')
         builder.add_edge('resolution', 'guardrails')
         builder.add_edge('guardrails', 'remediation')
-        builder.add_edge('remediation', END)
+        builder.add_conditional_edges(
+            'remediation',
+            remediation_route,
+            {'rediagnose': 'triage', 'done': END},
+        )
         return builder.compile()
 
     async def analyze(self, incident: Incident) -> WorkflowOutput:

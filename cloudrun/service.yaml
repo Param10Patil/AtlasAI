@@ -1,0 +1,43 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: opspilot
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: '0'
+        autoscaling.knative.dev/maxScale: '1'
+        run.googleapis.com/cpu-throttling: 'true'
+    spec:
+      containerConcurrency: 8
+      timeoutSeconds: 300
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/opspilot:COMMIT_SHA
+          ports:
+            - containerPort: 8080
+          env:
+            - name: OPSPILOT_APP_ENV
+              value: cloud
+            - name: OPSPILOT_EXECUTION_MODE
+              value: in_process
+            - name: OPSPILOT_ACTIVE_ANALYSIS_SLOTS
+              value: '1'
+            - name: OPSPILOT_QUEUE_CAPACITY
+              value: '1'
+            - name: OPSPILOT_REMEDIATION_MODE
+              value: simulate
+            - name: OPSPILOT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: opspilot-database-url
+                  key: latest
+            - name: OPSPILOT_LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: opspilot-llm-api-key
+                  key: latest
+          resources:
+            limits:
+              cpu: '1'
+              memory: 512Mi

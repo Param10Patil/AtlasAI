@@ -21,6 +21,7 @@ class WorkflowState(TypedDict, total=False):
     resolution: AnalysisResult
     guardrail_decision: GuardrailDecision
     remediation: RemediationResult
+    remediation_attempts: int
     errors: list[str]
     degraded: bool
     metadata: dict[str, Any]
