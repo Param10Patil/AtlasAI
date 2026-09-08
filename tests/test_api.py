@@ -52,3 +52,14 @@ def test_job_contract_is_idempotent_and_streams_ndjson():
         assert lines[-1]['result']['analysis']['evidence']
         status = client.get(job['status_url']).json()
         assert status['status'] == 'complete'
+
+
+def test_mcp_json_rpc_boundary_supports_initialize_and_discovery():
+    runtime = asyncio.run(build_runtime())
+    with TestClient(create_app(runtime)) as client:
+        initialized = client.post('/internal/v1/mcp', json={'jsonrpc': '2.0', 'id': 1, 'method': 'initialize'})
+        assert initialized.status_code == 200
+        assert initialized.json()['result']['serverInfo']['name'] == 'opspilot-knowledge'
+        tools = client.post('/internal/v1/mcp', json={'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'})
+        names = [tool['name'] for tool in tools.json()['result']['tools']]
+        assert {'search_runbooks', 'get_incident_history', 'execute_safe_action', 'verify_health'} <= set(names)

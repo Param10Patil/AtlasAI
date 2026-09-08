@@ -39,6 +39,15 @@ class JobRequest(AnalyzeRequest):
     client_request_id: UUID | None = None
 
 
+class MCPJsonRpcRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    jsonrpc: str = Field(default='2.0', pattern=r'^2\.0$')
+    id: int | str | None = None
+    method: str = Field(min_length=1, max_length=80)
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
 def _public_payload(output: Any) -> dict[str, Any]:
     result = output.result
     details = output.details
@@ -161,6 +170,14 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         except JobNotFoundError:
             return JSONResponse(status_code=404, content={'error': {'code': 'JOB_NOT_FOUND', 'message': 'The investigation job was not found.', 'retryable': False}})
         return _public_event(await request.app.state.coordinator.public_status(record))
+
+    @app.post('/internal/v1/mcp')
+    async def internal_mcp(payload: MCPJsonRpcRequest, request: Request) -> dict[str, Any]:
+        current: ApplicationRuntime = request.app.state.runtime
+        server = getattr(current.workflow.knowledge_agent.mcp_client, 'server', None)
+        if server is None:
+            return JSONResponse(status_code=503, content={'error': {'code': 'MCP_UNAVAILABLE', 'message': 'MCP server is not configured.', 'retryable': True}})
+        return await server.handle(payload.model_dump(exclude_none=True))
 
     @app.get('/api/incidents/analyze/jobs/{job_id}/events')
     async def job_events(job_id: UUID, request: Request) -> StreamingResponse:
