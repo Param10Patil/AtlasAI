@@ -27,7 +27,7 @@ class Settings(BaseModel):
 
     app_env: str = Field(default_factory=lambda: _env('APP_ENV', 'development') or 'development')
     execution_mode: ExecutionMode = Field(
-        default_factory=lambda: _env('EXECUTION_MODE', 'in_process') or 'in_process'
+        default_factory=lambda: ExecutionMode(_env('EXECUTION_MODE', 'in_process') or 'in_process')
     )
     log_level: str = Field(default_factory=lambda: _env('LOG_LEVEL', 'INFO') or 'INFO')
     database_url: str = Field(

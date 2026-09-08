@@ -36,7 +36,7 @@ class TriageAgent:
 
     @staticmethod
     def _service(description: str) -> str | None:
-        match = re.search(r'\\b(payment|checkout|orders?|identity|auth|api|database)\\b', description.lower())
+        match = re.search(r'\b(payment|checkout|orders?|identity|auth|api|database)\b', description.lower())
         return match.group(1) if match else None
 
     @staticmethod
