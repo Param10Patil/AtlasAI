@@ -1,33 +1,102 @@
-# Reproducible Colab training
+# Colab: train, validate, and download the OpsPilot adapter
 
-The repository supplies the complete command; Colab is only an optional
-compute host. It does not receive credentials and it never changes the API
-runtime. The dataset is 120 synthetic, reviewed examples: 20 per label.
+This exact notebook flow creates a PEFT/LoRA incident classifier and a
+validated zip that the AtlasAI runtime can load. It does not train a
+generative LLM and never changes the web runtime.
 
-1. Open a new Google Colab notebook and choose a CPU (or a free GPU runtime).
-2. Upload or clone this repository, then run:
+## 1. Clone and install
 
-```bash
+```python
+!rm -rf /content/AtlasAI
+!git clone --depth 1 https://github.com/Param10Patil/AtlasAI.git /content/AtlasAI
 %cd /content/AtlasAI
+!python -m pip install --upgrade pip
 !python -m pip install -r training/requirements.txt
-!python training/train_lora.py --seed 42 --epochs 3 --batch-size 8 \
-  --output-dir training/artifacts/opspilot-lora
-!python training/evaluate.py training/artifacts/opspilot-lora
 ```
 
-The command creates `adapter_config.json`, adapter weights, tokenizer files,
-`label_map.json`, `training_metadata.json`, `metrics.json`, and
-`artifact_manifest.json`. The manifest and SHA-256 value are checked before
-runtime loading. Download the entire `training/artifacts/opspilot-lora`
-directory (zip it first if needed) and set `OPSPILOT_LORA_ADAPTER_PATH` to its
-local path. Never commit model weights or MLflow runs; `.gitignore` excludes
-them.
+Use Colab's normal GitHub authentication for a private fork; never paste a
+token in a notebook. A free GPU is optional: `prajjwal1/bert-tiny` and the
+120-row CPU-capable dataset are deliberately small.
 
-For optional tracking, start a local MLflow server or use a notebook-local
-file store and pass `--tracking-uri`. A tracking failure is reported as a
-warning and cannot discard the local metrics/artifact. Incident text is never
-logged as an MLflow parameter.
+## 2. Train with fixed, reproducible settings
 
-This project cannot start Colab or approve a Google account from the local
-agent. The training run is therefore unverified until the commands above are
-run and their measured output is inspected.
+```python
+!rm -rf training/artifacts/opspilot-lora
+!python training/train_lora.py --dataset training/dataset/incidents.jsonl --output-dir training/artifacts/opspilot-lora --base-model prajjwal1/bert-tiny --epochs 3 --batch-size 8 --learning-rate 2e-4 --validation-fraction 0.2 --max-length 128 --seed 42
+```
+
+The seed creates 96 training and 24 validation rows (four per label). The
+command prints accuracy, macro-F1, per-class precision/recall/F1, and a
+confusion matrix. Treat these as educational offline measurements, not
+production accuracy.
+
+## 3. Evaluate and validate the artifact
+
+```python
+!python training/evaluate.py training/artifacts/opspilot-lora --dataset training/dataset/incidents.jsonl | tee /content/opspilot-evaluation.json
+```
+
+Then run this machine-readable gate:
+
+```python
+import json
+from pathlib import Path
+from training.evaluate import validate_artifact
+
+adapter = Path("training/artifacts/opspilot-lora")
+dataset = Path("training/dataset/incidents.jsonl")
+validated = validate_artifact(adapter, dataset)
+metadata = json.loads((adapter / "training_metadata.json").read_text())
+metrics = json.loads((adapter / "metrics.json").read_text())
+manifest = json.loads((adapter / "artifact_manifest.json").read_text())
+assert metadata["rows"] == 120 and metadata["train_rows"] == 96
+assert metadata["validation_rows"] == 24 and metrics["samples"] == 24
+assert metadata["labels"] == validated["label_map"]["labels"]
+assert set(manifest["files"]) >= {"adapter_config.json", "label_map.json", "training_metadata.json", "metrics.json"}
+print("adapter validation passed")
+print(json.dumps(validated, indent=2, default=str))
+```
+
+This checks exact label ordering, base-model metadata, dataset SHA-256,
+adapter SHA-256, manifest SHA-256, finite predictions, and metric structure.
+Do not copy an artifact when this gate fails.
+
+## 4. Download and integrate locally
+
+```python
+!cd training/artifacts && zip -qr /content/opspilot-lora.zip opspilot-lora
+from google.colab import files
+files.download("/content/opspilot-lora.zip")
+```
+
+On Windows, extract the zip so the environment variable points to the
+directory containing `adapter_config.json`:
+
+```powershell
+Expand-Archive .\\opspilot-lora.zip -DestinationPath .\\training\\artifacts -Force
+$env:OPSPILOT_LORA_ADAPTER_PATH = (Resolve-Path .\\training\\artifacts\\opspilot-lora)
+$env:OPSPILOT_APP_ENV = 'development'
+$env:OPSPILOT_EXECUTION_MODE = 'in_process'
+$env:OPSPILOT_DATABASE_URL = 'memory://opspilot'
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8080
+```
+
+Install `requirements-dev.txt` and `training/requirements.txt` in the
+environment that runs the API. Startup validates the adapter, imports
+Transformers lazily, reports classifier source `lora`, and falls back to the
+declared `rule_fallback` on invalid or failed inference. Startup never trains.
+The production Docker/Cloud Run image intentionally excludes training
+packages and weights; use a separately reviewed image or read-only mount for
+container experiments.
+
+## Optional MLflow and interview scope
+
+Pass `--tracking-uri file:///content/mlruns` to record a local run. Local
+metrics and artifacts are written first; a tracking failure is returned as a
+warning and cannot erase them. Never claim MLflow success without inspecting
+the tracking files or UI.
+
+This is sequence classification, so autoregressive generation, sampling,
+temperature, top-k/top-p, greedy decoding, KV cache, and continuous batching
+are not used by this model. See `docs/interview-guide.md` for interview notes
+that map those concepts to the actual AtlasAI serving design.
