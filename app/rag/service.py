@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 from typing import Sequence
 
-from app.database.repository import HistoricalRecord, InMemoryRepository, KnowledgeRecord, Repository
+from app.database.repository import HistoricalRecord, InMemoryRepository, KnowledgeRecord, PostgresRepository, Repository
 from app.models.schemas import EvidenceItem
 from app.providers.embeddings import HashEmbeddingProvider
 
@@ -25,8 +25,17 @@ class RAGService:
     async def ingest_records(self, records: Sequence[KnowledgeRecord], chunk_size: int = 800) -> int:
         if chunk_size < 100:
             raise ValueError('chunk_size must be at least 100 characters')
+        if isinstance(self.repository, PostgresRepository):
+            embedded: list[KnowledgeRecord] = []
+            for record in records:
+                chunks = self._chunks(record.content, chunk_size)
+                vectors = await self.embedding_provider.embed_documents(chunks)
+                for index, (chunk, vector) in enumerate(zip(chunks, vectors)):
+                    embedded.append(replace(record, id=f'{record.id}:{index}', content=chunk, embedding=tuple(vector), metadata={**record.metadata, 'chunk_index': str(index)}))
+            await self.repository.upsert_knowledge(embedded)
+            return len(embedded)
         if not isinstance(self.repository, InMemoryRepository):
-            raise NotImplementedError('PostgreSQL ingestion belongs to the database migration pass')
+            raise TypeError('repository does not support ingestion')
         existing = {record.id for record in self.repository.knowledge}
         added = 0
         for record in records:

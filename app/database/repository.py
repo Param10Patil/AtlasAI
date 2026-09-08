@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any, Protocol, Sequence
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from app.models.schemas import AnalysisResult, Incident
 
@@ -48,6 +48,8 @@ class Repository(Protocol):
     async def list_knowledge(self) -> list[KnowledgeRecord]: ...
     async def list_history(self, service: str | None, category: str, limit: int) -> list[HistoricalRecord]: ...
     async def similarity_search(self, vector: Sequence[float], limit: int) -> list[KnowledgeRecord]: ...
+    async def upsert_knowledge(self, records: Sequence[KnowledgeRecord]) -> None: ...
+    async def upsert_history(self, records: Sequence[HistoricalRecord]) -> None: ...
 
 
 class InMemoryRepository:
@@ -67,6 +69,14 @@ class InMemoryRepository:
 
     async def save_result(self, result: AnalysisResult) -> None:
         self.results.append(result)
+
+    async def upsert_knowledge(self, records: Sequence[KnowledgeRecord]) -> None:
+        existing = {item.id for item in self.knowledge}
+        self.knowledge.extend(item for item in records if item.id not in existing)
+
+    async def upsert_history(self, records: Sequence[HistoricalRecord]) -> None:
+        existing = {item.id for item in self.history}
+        self.history.extend(item for item in records if item.id not in existing)
 
     async def list_knowledge(self) -> list[KnowledgeRecord]:
         return list(self.knowledge)
@@ -173,6 +183,42 @@ class PostgresRepository:
                     for row in cursor.fetchall()
                 ]
         return await asyncio.to_thread(read)
+
+    async def upsert_knowledge(self, records: Sequence[KnowledgeRecord]) -> None:
+        rows = list(records)
+        def write() -> None:
+            connection = self._connect()
+            with connection.cursor() as cursor:
+                for record in rows:
+                    document_uuid = uuid5(NAMESPACE_URL, record.document_id)
+                    chunk_uuid = uuid5(NAMESPACE_URL, record.id)
+                    cursor.execute(
+                        'insert into knowledge_documents (id, title, source, content, metadata, checksum) '
+                        'values (%s, %s, %s, %s, %s, %s) on conflict (source) do update set content = excluded.content, metadata = excluded.metadata',
+                        (document_uuid, record.title, record.source, record.content, json.dumps(record.metadata), record.metadata.get('checksum', record.document_id)),
+                    )
+                    vector = str(list(record.embedding)) if record.embedding else None
+                    cursor.execute(
+                        'insert into knowledge_chunks (id, document_id, content, chunk_index, embedding, metadata) '
+                        'values (%s, %s, %s, %s, %s::vector, %s) on conflict (document_id, chunk_index) do update set content = excluded.content, embedding = excluded.embedding, metadata = excluded.metadata',
+                        (chunk_uuid, document_uuid, record.content, int(record.metadata.get('chunk_index', 0)), vector, json.dumps(record.metadata)),
+                    )
+            connection.commit()
+        await asyncio.to_thread(write)
+
+    async def upsert_history(self, records: Sequence[HistoricalRecord]) -> None:
+        rows = list(records)
+        def write() -> None:
+            connection = self._connect()
+            with connection.cursor() as cursor:
+                for record in rows:
+                    cursor.execute(
+                        'insert into historical_incidents (id, service, category, summary, resolution, created_at) '
+                        'values (%s, %s, %s, %s, %s, %s) on conflict (id) do update set resolution = excluded.resolution',
+                        (uuid5(NAMESPACE_URL, record.id), record.service, record.category, record.summary, record.resolution, record.created_at),
+                    )
+            connection.commit()
+        await asyncio.to_thread(write)
 
     async def list_history(self, service: str | None, category: str, limit: int) -> list[HistoricalRecord]:
         def read() -> list[HistoricalRecord]:
