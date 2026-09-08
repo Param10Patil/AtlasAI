@@ -33,7 +33,13 @@ class KnowledgeAgent:
         except (MCPUnavailable, MCPMalformedResponse):
             limitations.append('Incident history service unavailable')
         from app.models.schemas import EvidenceItem
-        evidence = [EvidenceItem.model_validate(item) for item in runbooks]
+        evidence = []
+        for item in runbooks:
+            try:
+                evidence.append(EvidenceItem.model_validate(item))
+            except Exception:
+                limitations.append('Evidence service returned malformed runbook data')
+        evidence = evidence[:5]
         return EvidenceBundle(
             runbook_evidence=evidence,
             historical_incidents=history,

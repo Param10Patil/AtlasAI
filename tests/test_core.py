@@ -3,6 +3,9 @@ from pydantic import ValidationError
 
 from app.agents.ports import TriageContext
 from app.agents.triage import TriageAgent
+from app.agents.knowledge import KnowledgeAgent
+from app.agents.resolution import ResolutionAgent
+from app.agents.ports import EvidenceBundle, KnowledgeContext, ResolutionContext
 from app.database.seed import build_seed_repository
 from app.mcp.server import MCPToolClient, MCPToolServer
 from app.guardrails.contracts import GuardrailContext
@@ -45,6 +48,48 @@ async def test_triage_context_rejects_unrelated_state():
     result = await TriageAgent().triage(TriageContext(incident_description='payment API returns 503 after deployment'))
     assert result.service == 'payment'
     assert result.category in {'deployment_failure', 'availability_issue'}
+
+
+@pytest.mark.asyncio
+async def test_malformed_mcp_items_become_a_limitation():
+    class MalformedClient:
+        async def search_runbooks(self, query, limit):
+            return {'status': 'complete', 'items': [{'unexpected': 'payload'}]}
+
+        async def get_incident_history(self, service, category, limit):
+            return {'status': 'no_evidence', 'items': []}
+
+    result = await KnowledgeAgent(MalformedClient()).investigate(KnowledgeContext(
+        incident_summary='payment outage',
+        category='availability_issue',
+    ))
+    assert result.runbook_evidence == []
+    assert any('malformed' in item for item in result.retrieval_limitations)
+
+
+@pytest.mark.asyncio
+async def test_resolution_forwards_only_selected_evidence():
+    repository = await build_seed_repository()
+    evidence = (await RAGService(repository).retrieve('payment 503 deployment', 3)).evidence
+
+    class SelectiveProvider:
+        async def generate_resolution(self, context):
+            return {
+                'severity': 'high',
+                'title': 'Selected evidence',
+                'likely_causes': ['release regression'],
+                'recommended_actions': [{'text': 'Review the release with an operator.', 'requires_confirmation': True}],
+                'confidence': 0.6,
+                'evidence_ids': [evidence[0].id],
+            }
+
+    triage = await TriageAgent().triage(TriageContext(incident_description='payment API returns 503'))
+    result = await ResolutionAgent(SelectiveProvider()).resolve(ResolutionContext(
+        incident_summary=triage.incident_summary,
+        triage=triage,
+        evidence=EvidenceBundle(runbook_evidence=evidence),
+    ))
+    assert [item.id for item in result.evidence] == [evidence[0].id]
 
 
 def test_guardrails_reject_destructive_advice():

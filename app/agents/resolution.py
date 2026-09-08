@@ -50,13 +50,17 @@ class ResolutionAgent:
         if any(identifier not in allowed_ids for identifier in requested_ids):
             raise ValueError('resolution referenced evidence not selected')
         actions = [RecommendedAction.model_validate(item) for item in payload.get('recommended_actions', [])]
+        selected_evidence = [
+            item for item in context.evidence.runbook_evidence
+            if not requested_ids or item.id in requested_ids
+        ]
         return AnalysisResult(
             severity=payload['severity'],
             title=payload['title'],
             likely_causes=payload.get('likely_causes', []),
             recommended_actions=actions,
             confidence=payload['confidence'],
-            evidence=context.evidence.runbook_evidence,
+            evidence=selected_evidence,
             limitations=[],
         )
 
