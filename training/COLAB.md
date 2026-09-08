@@ -74,6 +74,7 @@ directory containing `adapter_config.json`:
 
 ```powershell
 Expand-Archive .\opspilot-lora.zip -DestinationPath .\training\artifacts -Force
+python -m pip install -r requirements-dev.txt -r training/requirements.txt
 $env:OPSPILOT_LORA_ADAPTER_PATH = (Resolve-Path .\training\artifacts\opspilot-lora)
 $env:OPSPILOT_APP_ENV = 'development'
 $env:OPSPILOT_EXECUTION_MODE = 'in_process'
