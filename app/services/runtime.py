@@ -50,7 +50,8 @@ async def build_runtime(settings: Settings | None = None) -> ApplicationRuntime:
             ready, readiness = await repository.health()
             if not ready:
                 return ApplicationRuntime(settings, repository, _empty_workflow(), False, readiness)
-            await seed_postgres(repository)
+            if settings.app_env not in {'cloud', 'production'}:
+                await seed_postgres(repository)
         # Initialization is an infrastructure boundary; expose only a safe
         # readiness state and let the request layer remain available.
         except Exception:  # noqa: BLE001

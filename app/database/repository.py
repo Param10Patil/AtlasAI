@@ -343,7 +343,8 @@ class _PostgresQueueMethods:
         def claim() -> JobSnapshot | None:
             connection = self._connect()
             with connection.cursor() as cursor:
-                cursor.execute('update analysis_jobs set status = %s, lease_owner = null, lease_expires_at = null where status = %s and lease_expires_at < now()', ('queued', 'running'))
+                cursor.execute('update analysis_jobs set status = %s, lease_owner = null, lease_expires_at = null where status = %s and lease_expires_at < now() and attempt_count < 3', ('queued', 'running'))
+                cursor.execute('update analysis_jobs set status = %s, error_code = %s, completed_at = now(), lease_owner = null, lease_expires_at = null where status = %s and lease_expires_at < now() and attempt_count >= 3', ('failed', 'LEASE_EXPIRED', 'running'))
                 cursor.execute(
                     'update analysis_jobs set status = %s, started_at = coalesce(started_at, now()), attempt_count = attempt_count + 1, lease_owner = %s, lease_expires_at = now() + make_interval(secs => %s) '
                     'where id = (select id from analysis_jobs where status = %s and cancel_requested = false and not exists (select 1 from analysis_jobs where status = %s) order by created_at, id for update skip locked limit 1) '
@@ -362,6 +363,16 @@ class _PostgresQueueMethods:
                 cursor.execute('update analysis_jobs set status = %s, completed_at = now(), result_payload = %s, lease_owner = null, lease_expires_at = null where id = %s and status = %s', ('complete', json.dumps(result_payload), job_id, 'running'))
             connection.commit()
         await asyncio.to_thread(write)
+
+    async def refresh_job(self, job_id: UUID, lease_owner: str, lease_seconds: int = 180) -> bool:
+        def write() -> bool:
+            connection = self._connect()
+            with connection.cursor() as cursor:
+                cursor.execute('update analysis_jobs set lease_expires_at = now() + make_interval(secs => %s) where id = %s and status = %s and lease_owner = %s', (lease_seconds, job_id, 'running', lease_owner))
+                changed = cursor.rowcount == 1
+            connection.commit()
+            return changed
+        return await asyncio.to_thread(write)
 
     async def fail_job(self, job_id: UUID, error_code: str) -> None:
         def write() -> None:
@@ -393,5 +404,5 @@ class _PostgresQueueMethods:
         return await asyncio.to_thread(read)
 
 
-for _method_name in ('create_job', 'get_job', 'claim_job', 'complete_job', 'fail_job', 'cancel_job', 'job_position'):
+for _method_name in ('create_job', 'get_job', 'claim_job', 'refresh_job', 'complete_job', 'fail_job', 'cancel_job', 'job_position'):
     setattr(PostgresRepository, _method_name, getattr(_PostgresQueueMethods, _method_name))

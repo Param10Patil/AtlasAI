@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -230,6 +231,9 @@ class PostgresJobStore:
             record.result = output
             self._emit(record, 'complete', 0)
 
+    async def refresh(self, record: JobRecord, lease_owner: str = 'opspilot-api') -> bool:
+        return await self.repository.refresh_job(record.job_id, lease_owner)
+
     async def set_failed(self, record: JobRecord, code: str = 'INVESTIGATION_FAILED') -> None:
         await self.repository.fail_job(record.job_id, code)
         async with self._lock:
@@ -359,6 +363,7 @@ class AnalysisCoordinator:
                 self._running_tasks.pop(record.job_id, None)
 
     async def _process(self, record: JobRecord) -> None:
+        lease_task = asyncio.create_task(self._refresh_lease(record)) if hasattr(self.store, 'refresh') else None
         try:
             output = await asyncio.wait_for(
                 self.workflow.analyze(Incident(description=record.description)),
@@ -374,3 +379,14 @@ class AnalysisCoordinator:
             await self.store.set_failed(record, 'WORKFLOW_TIMEOUT')
         except Exception:  # noqa: BLE001
             await self.store.set_failed(record)
+        finally:
+            if lease_task is not None:
+                lease_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await lease_task
+
+    async def _refresh_lease(self, record: JobRecord) -> None:
+        while True:
+            await asyncio.sleep(60)
+            if not await self.store.refresh(record):
+                return
