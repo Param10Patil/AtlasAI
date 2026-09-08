@@ -1,6 +1,140 @@
-{"text":"The checkout API returns 503 immediately after the release.","label":"availability_issue"}
-{"text":"Database connections are exhausted and requests cannot acquire one.","label":"database_failure"}
-{"text":"Users receive invalid credentials after enabling the new login flow.","label":"authentication_failure"}
-{"text":"Latency increased after a deployment and p95 is above the SLO.","label":"performance_issue"}
+{"text":"The new checkout image crashes during startup.","label":"deployment_failure"}
+{"text":"Release pods fail readiness after the image changed.","label":"deployment_failure"}
+{"text":"A deployment rollout is stuck with unavailable replicas.","label":"deployment_failure"}
+{"text":"The container exits before serving its health endpoint.","label":"deployment_failure"}
+{"text":"The latest release has a broken environment variable.","label":"deployment_failure"}
+{"text":"Kubernetes cannot start the newly deployed worker.","label":"deployment_failure"}
+{"text":"The production rollout reports failed startup probes.","label":"deployment_failure"}
+{"text":"A bad image tag caused the API deployment to fail.","label":"deployment_failure"}
+{"text":"The service became unhealthy immediately after deploy.","label":"deployment_failure"}
+{"text":"The release controller cannot make the new replica ready.","label":"deployment_failure"}
+{"text":"The application process exits during deployment initialization.","label":"deployment_failure"}
+{"text":"The new container has an incompatible configuration.","label":"deployment_failure"}
+{"text":"Deployment health checks fail for every fresh pod.","label":"deployment_failure"}
+{"text":"A rollout stopped because the replacement pods crash.","label":"deployment_failure"}
+{"text":"The release image is rejected by the runtime.","label":"deployment_failure"}
+{"text":"A startup exception prevents the deployed API from serving.","label":"deployment_failure"}
+{"text":"The deployment has zero ready replicas after promotion.","label":"deployment_failure"}
+{"text":"The latest build fails its container startup check.","label":"deployment_failure"}
+{"text":"A configuration regression breaks the current rollout.","label":"deployment_failure"}
+{"text":"New pods never become ready after the release.","label":"deployment_failure"}
+{"text":"Database connections are exhausted.","label":"database_failure"}
+{"text":"The API cannot connect to PostgreSQL.","label":"database_failure"}
+{"text":"Our connection pool is full and queries wait indefinitely.","label":"database_failure"}
+{"text":"Postgres returns connection refused to the orders service.","label":"database_failure"}
+{"text":"Database transactions fail because the pool is exhausted.","label":"database_failure"}
+{"text":"The application lost access to its SQL database.","label":"database_failure"}
+{"text":"Queries cannot obtain a database session.","label":"database_failure"}
+{"text":"A PostgreSQL authentication error blocks the service.","label":"database_failure"}
+{"text":"The database dependency is timing out for every request.","label":"database_failure"}
+{"text":"Connection errors increased after the schema migration.","label":"database_failure"}
+{"text":"The SQL pool has no idle connections left.","label":"database_failure"}
+{"text":"The order API reports a database unavailable error.","label":"database_failure"}
+{"text":"A deadlock is causing database requests to fail.","label":"database_failure"}
+{"text":"The service cannot establish a secure database connection.","label":"database_failure"}
+{"text":"Postgres is rejecting new application connections.","label":"database_failure"}
+{"text":"Database query attempts fail before execution begins.","label":"database_failure"}
+{"text":"The persistence layer is unavailable to the checkout API.","label":"database_failure"}
+{"text":"The API reports repeated SQL connection failures.","label":"database_failure"}
+{"text":"A database failover left the application without a session.","label":"database_failure"}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 {"text":"Pods cannot reach the payment service over the cluster network.","label":"network_failure"}
-{"text":"The new image crashes during startup in production.","label":"deployment_failure"}
+{"text":"DNS lookup fails for the orders dependency.","label":"network_failure"}
+{"text":"The API cannot establish a socket to the upstream service.","label":"network_failure"}
+{"text":"Network policy blocks traffic from checkout to billing.","label":"network_failure"}
+{"text":"Requests fail because service discovery returns no address.","label":"network_failure"}
+{"text":"The internal TLS connection cannot be established.","label":"network_failure"}
+{"text":"A route to the inventory service is unavailable.","label":"network_failure"}
+{"text":"Pods report connection timeouts to the cache network.","label":"network_failure"}
+{"text":"The payment host is unreachable from the worker.","label":"network_failure"}
+{"text":"Ingress traffic cannot reach the backend service.","label":"network_failure"}
+{"text":"A DNS outage prevents calls to the identity service.","label":"network_failure"}
+{"text":"The cluster network drops requests between namespaces.","label":"network_failure"}
+{"text":"The service mesh cannot connect to its upstream.","label":"network_failure"}
+{"text":"Network connectivity disappeared after a policy update.","label":"network_failure"}
+{"text":"The API receives connection reset from the dependency.","label":"network_failure"}
+{"text":"A firewall rule blocks the database network path.","label":"network_failure"}
+{"text":"The worker cannot resolve the external webhook host.","label":"network_failure"}
+{"text":"Cross-zone traffic to the API is failing.","label":"network_failure"}
+{"text":"The upstream socket closes before a response.","label":"network_failure"}
+{"text":"Network routes are missing for the production namespace.","label":"network_failure"}
+{"text":"Latency increased after a deployment and p95 is above the SLO.","label":"performance_issue"}
+{"text":"Requests are taking 8 to 10 seconds to complete.","label":"performance_issue"}
+{"text":"The checkout endpoint is slow during normal traffic.","label":"performance_issue"}
+{"text":"Tail latency crossed the p99 performance objective.","label":"performance_issue"}
+{"text":"Response duration increased sharply after the release.","label":"performance_issue"}
+{"text":"The API is timing out because processing is too slow.","label":"performance_issue"}
+{"text":"Database queries make the request path sluggish.","label":"performance_issue"}
+{"text":"The service shows sustained high latency and queueing.","label":"performance_issue"}
+{"text":"P95 response time is above the agreed threshold.","label":"performance_issue"}
+{"text":"Users report that page requests take several seconds.","label":"performance_issue"}
+{"text":"Throughput fell while request duration increased.","label":"performance_issue"}
+{"text":"The worker is slow and misses its processing deadline.","label":"performance_issue"}
+{"text":"A performance regression affects the search endpoint.","label":"performance_issue"}
+{"text":"The API response time doubled after configuration changed.","label":"performance_issue"}
+{"text":"Requests are timing out under a modest load.","label":"performance_issue"}
+{"text":"High CPU is causing slow responses from the service.","label":"performance_issue"}
+{"text":"The latency budget is exhausted for checkout calls.","label":"performance_issue"}
+{"text":"The endpoint has a growing backlog and long duration.","label":"performance_issue"}
+{"text":"Performance monitoring shows a p99 spike.","label":"performance_issue"}
+{"text":"The application is responding slowly to every request.","label":"performance_issue"}
+{"text":"The checkout API returns 503 immediately after the release.","label":"availability_issue"}
+{"text":"The public service is unavailable for all users.","label":"availability_issue"}
+{"text":"Requests receive 503 from the gateway.","label":"availability_issue"}
+{"text":"The production endpoint is down.","label":"availability_issue"}
+{"text":"A dependency outage makes the API unavailable.","label":"availability_issue"}
+{"text":"The health endpoint reports service outage.","label":"availability_issue"}
+{"text":"The site returns errors instead of a response.","label":"availability_issue"}
+{"text":"The API has complete downtime in one region.","label":"availability_issue"}
+{"text":"Clients cannot reach the checkout service right now.","label":"availability_issue"}
+{"text":"The gateway reports no healthy upstreams.","label":"availability_issue"}
+{"text":"Availability dropped to zero after a configuration change.","label":"availability_issue"}
+{"text":"The service is down even though the process is running.","label":"availability_issue"}
+{"text":"A regional outage affects the public API.","label":"availability_issue"}
+{"text":"Every request returns an unavailable response.","label":"availability_issue"}
+{"text":"The status check is failing and users see an outage.","label":"availability_issue"}
+{"text":"The frontend cannot access its backend service.","label":"availability_issue"}
+{"text":"A production incident caused widespread downtime.","label":"availability_issue"}
+{"text":"The API is intermittently unavailable to customers.","label":"availability_issue"}
+{"text":"The gateway returns an error for all traffic.","label":"availability_issue"}
+{"text":"The application is not serving requests.","label":"availability_issue"}
+{"text":"Users receive invalid credentials after enabling the new login flow.","label":"authentication_failure"}
+{"text":"The identity service rejects valid bearer tokens.","label":"authentication_failure"}
+{"text":"Login requests return unauthorized for existing users.","label":"authentication_failure"}
+{"text":"The API returns 401 after the signing key rotated.","label":"authentication_failure"}
+{"text":"A permission check denies every authenticated request.","label":"authentication_failure"}
+{"text":"The OAuth callback cannot complete sign in.","label":"authentication_failure"}
+{"text":"Access tokens are reported as expired immediately.","label":"authentication_failure"}
+{"text":"The authentication middleware rejects the session cookie.","label":"authentication_failure"}
+{"text":"Users cannot log in after the identity configuration changed.","label":"authentication_failure"}
+{"text":"The service returns forbidden for the admin role.","label":"authentication_failure"}
+{"text":"Token validation fails with the new issuer.","label":"authentication_failure"}
+{"text":"The login endpoint rejects correct passwords.","label":"authentication_failure"}
+{"text":"A rotated key breaks JWT verification.","label":"authentication_failure"}
+{"text":"Single sign-on users receive an unauthorized response.","label":"authentication_failure"}
+{"text":"The credentials provider is not accepting requests.","label":"authentication_failure"}
+{"text":"Authorization fails for previously working accounts.","label":"authentication_failure"}
+{"text":"The identity token audience no longer matches.","label":"authentication_failure"}
+{"text":"The API denies access despite a valid session.","label":"authentication_failure"}
+{"text":"A login flow regression prevents user authentication.","label":"authentication_failure"}
+{"text":"Permission errors appear for every protected route.","label":"authentication_failure"}
+{"text":"The database pool timeout is now exceeded.","label":"database_failure"}

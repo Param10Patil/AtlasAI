@@ -201,7 +201,9 @@ class InvestigationWorkflow:
                 for name in dict.fromkeys(getattr(self.knowledge_agent.mcp_client, 'calls', []))
             ),
             models={
-                'classifier': triage.classifier_source if triage else 'fallback',
+                # Keep the old display value for API compatibility while the
+                # typed triage contract exposes the precise rule_fallback name.
+                'classifier': ('fallback' if triage and triage.classifier_source == 'rule_fallback' else triage.classifier_source) if triage else 'fallback',
                 'resolution': self.resolution_agent.provider_name,
                 'orchestrator': self.engine,
             },
