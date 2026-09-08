@@ -4,7 +4,7 @@ services:
     environment:
       OPSPILOT_APP_ENV: development
       OPSPILOT_EXECUTION_MODE: in_process
-      OPSPILOT_DATABASE_URL: postgresql+psycopg://opspilot:opspilot@postgres:5432/opspilot
+      OPSPILOT_DATABASE_URL: postgresql://opspilot:opspilot@postgres:5432/opspilot
       PORT: 8080
     ports:
       - 8080:8080

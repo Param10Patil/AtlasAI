@@ -108,13 +108,20 @@ class PostgresRepository:
         self.schema_path = schema_path or Path(__file__).with_name('schema.sql')
         self._connection: Any = None
 
+    def _connection_string(self) -> str:
+        # psycopg accepts postgresql://, while some deployment templates use
+        # the SQLAlchemy-style postgresql+psycopg:// spelling.
+        if self.database_url.startswith('postgresql+psycopg://'):
+            return 'postgresql://' + self.database_url.removeprefix('postgresql+psycopg://')
+        return self.database_url
+
     def _connect(self) -> Any:
         try:
             import psycopg
         except ImportError as exc:
             raise RepositoryError('psycopg is not installed; install runtime dependencies') from exc
         if self._connection is None or self._connection.closed:
-            self._connection = psycopg.connect(self.database_url, connect_timeout=5)
+            self._connection = psycopg.connect(self._connection_string(), connect_timeout=5)
         return self._connection
 
     def _initialize_sync(self) -> None:
@@ -180,7 +187,10 @@ class PostgresRepository:
         def read() -> list[KnowledgeRecord]:
             connection = self._connect()
             with connection.cursor() as cursor:
-                cursor.execute('select id, id, title, content, source, metadata, embedding from knowledge_documents')
+                cursor.execute(
+                    'select id, id, title, content, source, metadata, null::vector '
+                    'from knowledge_documents order by source'
+                )
                 return [
                     KnowledgeRecord(str(row[0]), str(row[1]), row[2], row[3], row[4], row[5] or {}, tuple(row[6]) if row[6] else None)
                     for row in cursor.fetchall()
@@ -229,7 +239,7 @@ class PostgresRepository:
             with connection.cursor() as cursor:
                 cursor.execute(
                     'select id, service, category, summary, resolution, created_at from historical_incidents '
-                    'where category = %s and (%s is null or service = %s or service is null) '
+                    'where category = %s and (%s::varchar is null or service = %s or service is null) '
                     'order by created_at desc limit %s',
                     (category, service, service, limit),
                 )
@@ -242,9 +252,12 @@ class PostgresRepository:
             connection = self._connect()
             with connection.cursor() as cursor:
                 cursor.execute(
-                    'select id, document_id, title, content, source, metadata, embedding '
-                    'from knowledge_chunks where embedding is not null '
-                    'order by embedding <=> %s::vector limit %s',
+                    'select chunks.id, chunks.document_id, documents.title, chunks.content, '
+                    'documents.source, chunks.metadata, chunks.embedding '
+                    'from knowledge_chunks as chunks '
+                    'join knowledge_documents as documents on documents.id = chunks.document_id '
+                    'where chunks.embedding is not null '
+                    'order by chunks.embedding <=> %s::vector limit %s',
                     (str(values), limit),
                 )
                 return [KnowledgeRecord(str(row[0]), str(row[1]), row[2], row[3], row[4], row[5] or {}, tuple(row[6]) if row[6] else None) for row in cursor.fetchall()]

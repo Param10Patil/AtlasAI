@@ -7,4 +7,4 @@ data:
   OPSPILOT_APP_ENV: kubernetes
   OPSPILOT_EXECUTION_MODE: http
   OPSPILOT_LOG_LEVEL: INFO
-  OPSPILOT_DATABASE_URL: postgresql+psycopg://opspilot@postgres:5432/opspilot
+  OPSPILOT_DATABASE_URL: postgresql://opspilot@postgres:5432/opspilot

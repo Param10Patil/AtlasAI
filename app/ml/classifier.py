@@ -28,10 +28,10 @@ class FallbackClassifier:
 
     keywords: ClassVar[dict[str, set[str]]] = {
         'deployment_failure': {'deploy', 'deployment', 'release', 'rollout', 'image', 'crashloop'},
-        'database_failure': {'database', 'db', 'postgres', 'sql', 'connection', 'pool', 'deadlock'},
+        'database_failure': {'database', 'db', 'postgres', 'postgresql', 'sql', 'connection', 'connect', 'cannot', 'pool', 'deadlock'},
         'authentication_failure': {'auth', 'login', 'token', 'credential', '401', '403', 'permission'},
         'network_failure': {'network', 'dns', 'connectivity', 'route', 'tls', 'socket'},
-        'performance_issue': {'latency', 'slow', 'p95', 'p99', 'performance', 'timeout'},
+        'performance_issue': {'latency', 'slow', 'p95', 'p99', 'performance', 'timeout', 'taking', 'seconds', 'second', 'duration', 'response'},
         'availability_issue': {'503', 'unavailable', 'outage', 'downtime', 'down', 'error'},
     }
 

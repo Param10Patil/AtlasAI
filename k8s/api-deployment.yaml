@@ -24,6 +24,12 @@ spec:
                 name: opspilot-config
             - secretRef:
                 name: opspilot-secrets
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opspilot-secrets
+                  key: OPSPILOT_DATABASE_PASSWORD
           resources:
             requests: {cpu: 50m, memory: 96Mi}
             limits: {cpu: 500m, memory: 384Mi}

@@ -10,6 +10,7 @@ from app.agents.ports import (
 )
 from app.agents.resolution import ResolutionAgent
 from app.agents.triage import TriageAgent
+from app.database.repository import PostgresRepository
 from app.database.seed import build_seed_repository
 from app.guardrails.contracts import GuardrailContext
 from app.guardrails.service import GuardrailService
@@ -43,6 +44,22 @@ async def test_workflow_uses_langgraph_or_declared_fallback():
     assert output.result.evidence
     assert output.details.models['orchestrator'] in {'langgraph', 'sequential-fallback'}
     assert output.details.models['classifier'] == 'fallback'
+
+
+@pytest.mark.asyncio
+async def test_workflow_covers_database_and_latency_incidents():
+    runtime = await build_runtime()
+    database = await runtime.analyze('API cannot connect to PostgreSQL')
+    latency = await runtime.analyze('Requests are taking 8-10 seconds')
+    assert 'database' in database.result.title
+    assert 'performance' in latency.result.title
+
+
+def test_postgres_driver_url_is_normalized():
+    qualified = PostgresRepository('postgresql+psycopg://user:pass@db/app')
+    plain = PostgresRepository('postgresql://user:pass@db/app')
+    assert qualified._connection_string() == 'postgresql://user:pass@db/app'
+    assert plain._connection_string() == 'postgresql://user:pass@db/app'
 
 
 @pytest.mark.asyncio
