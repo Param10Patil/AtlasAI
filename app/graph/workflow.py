@@ -141,7 +141,10 @@ class InvestigationWorkflow:
                 'historical_incidents': len(evidence.historical_incidents) if evidence else 0,
                 'retrieval_status': 'degraded' if evidence and evidence.retrieval_limitations else 'complete',
             },
-            tools=tuple({'name': name, 'status': 'complete'} for name in getattr(self.knowledge_agent.mcp_client, 'calls', [])),
+            tools=tuple(
+                {'name': name, 'status': 'complete'}
+                for name in dict.fromkeys(getattr(self.knowledge_agent.mcp_client, 'calls', []))
+            ),
             models={
                 'classifier': triage.classifier_source if triage else 'fallback',
                 'resolution': self.resolution_agent.provider_name,

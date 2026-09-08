@@ -258,6 +258,7 @@ def seed_records(knowledge_dir: Path) -> tuple[list[KnowledgeRecord], list[Histo
         checksum = hashlib.sha256(content.encode('utf-8')).hexdigest()
         records.append(KnowledgeRecord(checksum[:16], checksum[:16], title, content, path.as_posix(), {'checksum': checksum}))
     history = [
+        HistoricalRecord('history-payment-deploy', 'payment', 'deployment_failure', 'Payment API returned 503 after a release', 'Paused rollout and restored the last known-good revision after approval', datetime(2025, 6, 12, tzinfo=timezone.utc)),
         HistoricalRecord('history-payment-503', 'payments', 'availability_issue', 'Payment API returned 503 after a release', 'Paused rollout and restored the last known-good revision after approval', datetime(2025, 6, 12, tzinfo=timezone.utc)),
         HistoricalRecord('history-pool', 'orders', 'database_failure', 'Connection pool exhausted during a traffic spike', 'Removed a leaked transaction and reduced retry amplification', datetime(2025, 4, 3, tzinfo=timezone.utc)),
         HistoricalRecord('history-auth', 'identity', 'authentication_failure', 'Token validation failed after key rotation', 'Corrected the audience configuration and rotated keys through the normal process', datetime(2025, 2, 18, tzinfo=timezone.utc)),
