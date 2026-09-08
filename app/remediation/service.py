@@ -14,6 +14,8 @@ class RemediationToolClient(Protocol):
 class SimulatedActionExecutor:
     '''Credential-free executor used for demos; never invokes a shell command.'''
 
+    simulated = True
+
     def __init__(self):
         self.executions: list[tuple[str, str]] = []
 
@@ -68,11 +70,12 @@ class RemediationAgent:
                 )
             verification = await self.mcp_client.verify_health(target)
             healthy = verification.get('status') == 'healthy'
+            mode_note = ' in simulation' if execution.get('simulated') else ''
             return RemediationResult(
                 status='verified' if healthy else 'failed',
                 action=action,
                 target=target,
-                message='The safe action completed and health was verified.' if healthy else 'The safe action completed but health is not verified.',
+                message=f'The allowlisted action completed{mode_note}; health was verified.' if healthy else 'The safe action completed but health is not verified.',
                 health_verified=healthy,
                 retry_recommended=not healthy,
             )

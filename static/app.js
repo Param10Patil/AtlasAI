@@ -76,7 +76,7 @@ const readEvents = async (response, requestId) => {
 };
 
 const runAnalysis = async (description) => {
-  const requestId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + String(Math.random());
+  const requestId = (window.crypto && typeof window.crypto.randomUUID === 'function') ? window.crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => { const random = Math.random() * 16 | 0; const value = character === 'x' ? random : (random & 0x3 | 0x8); return value.toString(16); });
   state.activeRequestId = requestId;
   state.controller = new AbortController();
   state.jobId = null;

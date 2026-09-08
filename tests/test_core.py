@@ -149,6 +149,7 @@ async def test_remediation_is_allowlisted_mcp_mediated_and_health_verified():
     )
     assert result.status == 'verified'
     assert result.health_verified
+    assert 'simulation' in result.message
     assert executor.executions == [('rollback_deployment', 'payment')]
     assert client.calls[-2:] == ['execute_safe_action', 'verify_health']
 

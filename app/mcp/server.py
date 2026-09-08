@@ -72,6 +72,7 @@ class MCPToolServer:
             'status': 'executed' if result else 'failed',
             'action': request.action.value,
             'target': request.target,
+            'simulated': bool(getattr(self.remediation_executor, 'simulated', False)),
             'message': 'allowlisted action executed in the configured remediation mode' if result else 'allowlisted action was not executed',
         }
 
