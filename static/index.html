@@ -3,21 +3,39 @@
   <head>
     <meta charset='utf-8' />
     <meta name='viewport' content='width=device-width, initial-scale=1' />
+    <meta name='description' content='Evidence-aware AI incident investigation assistant' />
     <title>OpsPilot - Incident investigation</title>
     <link rel='stylesheet' href='/static/styles.css' />
   </head>
   <body>
+    <header class='topbar'>
+      <a class='brand' href='/' aria-label='OpsPilot home'><span class='brand-mark'>O</span><span>OpsPilot</span></a>
+      <span class='topbar-note'>Incident investigation assistant</span>
+    </header>
     <main class='shell'>
-      <p class='eyebrow'>OPSPILOT</p>
-      <h1>AI incident investigation assistant</h1>
-      <p class='lede'>Describe what went wrong. OpsPilot will return an evidence-aware recommendation.</p>
-      <form id='incident-form'>
-        <label for='incident-description'>Incident description</label>
-        <textarea id='incident-description' name='description' maxlength='4000' required></textarea>
-        <button type='submit'>Analyze incident</button>
-      </form>
-      <p id='status' role='status' aria-live='polite'></p>
+      <section class='intro' aria-labelledby='page-title'>
+        <p class='eyebrow'>CALM, EVIDENCE-AWARE TRIAGE</p>
+        <h1 id='page-title'>Understand what went wrong.</h1>
+        <p class='lede'>Describe a software incident in plain language. OpsPilot organizes the signal, checks relevant knowledge, and returns a cautious next step.</p>
+      </section>
+      <section class='card form-card' aria-labelledby='form-title'>
+        <div class='section-heading'><div><p class='kicker'>START AN INVESTIGATION</p><h2 id='form-title'>What happened?</h2></div><span class='limit'>Up to 4,000 characters</span></div>
+        <form id='incident-form' novalidate>
+          <label class='sr-only' for='incident-description'>Incident description</label>
+          <textarea id='incident-description' name='description' maxlength='4000' placeholder='Our payment API started returning 503 errors after today&apos;s deployment.' required></textarea>
+          <div class='form-footer'><p id='input-hint' class='input-hint'>Include the service, symptom, and what changed if you know them.</p><button id='submit-button' type='submit'><span>Analyze incident</span><span aria-hidden='true'>→</span></button></div>
+        </form>
+        <div class='examples' aria-label='Example incidents'><span>Try an example</span><button type='button' data-example='Our payment API started returning 503 errors after today&apos;s deployment.'>API 503</button><button type='button' data-example='Database connections are exhausted and checkout requests are timing out.'>Database failure</button><button type='button' data-example='Our API p95 latency doubled after the latest release.'>High latency</button></div>
+      </section>
+      <section id='progress-panel' class='card progress-card' hidden aria-live='polite' aria-busy='false'><span class='spinner' aria-hidden='true'></span><div><p class='kicker'>INVESTIGATION IN PROGRESS</p><h2>OpsPilot is reviewing the incident</h2><p id='progress-message'>Checking the incident details and relevant evidence.</p></div></section>
+      <section id='error-panel' class='card error-card' hidden role='alert'><div class='status-icon'>!</div><div><p class='kicker'>INVESTIGATION PAUSED</p><h2>We could not complete the investigation.</h2><p id='error-message'>Please try again.</p><button id='retry-button' class='secondary-button' type='button'>Try again</button></div></section>
+      <section id='result-panel' class='result-stack' hidden aria-labelledby='result-title'>
+        <div class='result-header'><div><p class='kicker'>INCIDENT ANALYSIS</p><h2 id='result-title'>Analysis result</h2></div><span id='severity-badge' class='severity-badge'></span></div>
+        <div class='card result-card'><div class='result-grid'><div class='result-main'><p class='field-label'>LIKELY CAUSE</p><p id='cause-text' class='cause-text'></p><p class='field-label action-label'>RECOMMENDED ACTION</p><p id='action-text' class='action-text'></p></div><div class='confidence'><span class='field-label'>CONFIDENCE</span><strong id='confidence-value'></strong><span id='evidence-count' class='evidence-count'></span></div></div><div class='result-footer'><p id='limitation-text' class='limitation'></p><button id='new-analysis' class='secondary-button' type='button'>New analysis</button></div></div>
+        <details class='card details-card'><summary>View investigation details <span aria-hidden='true'>↓</span></summary><div class='details-body'><div><h3>Investigation flow</h3><ul id='steps-list' class='steps-list'></ul></div><div><h3>Evidence</h3><ul id='evidence-list' class='evidence-list'></ul></div><div class='detail-columns'><div><h3>MCP tools</h3><ul id='tools-list' class='status-list'></ul></div><div><h3>Model and safety</h3><ul id='model-list' class='status-list'></ul></div></div></div></details>
+      </section>
     </main>
+    <footer class='footer'>OpsPilot offers advisory analysis. Verify evidence and confirm any operational action.</footer>
     <script src='/static/app.js' defer></script>
   </body>
 </html>
