@@ -46,7 +46,8 @@ async def build_runtime(settings: Settings | None = None) -> ApplicationRuntime:
     else:
         repository = PostgresRepository(settings.database_url)
         try:
-            await repository.initialize()
+            if settings.app_env not in {'cloud', 'production'}:
+                await repository.initialize()
             ready, readiness = await repository.health()
             if not ready:
                 return ApplicationRuntime(settings, repository, _empty_workflow(), False, readiness)

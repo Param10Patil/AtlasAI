@@ -163,6 +163,12 @@ class PostgresRepository:
                 cursor.execute('select exists (select 1 from pg_extension where extname = %s)', ('vector',))
                 if not cursor.fetchone()[0]:
                     return False, 'pgvector extension is unavailable'
+                cursor.execute(
+                    'select count(*) from information_schema.tables where table_schema = current_schema() and table_name = any(%s)',
+                    (['incidents', 'knowledge_documents', 'knowledge_chunks', 'historical_incidents', 'analysis_results', 'analysis_jobs'],),
+                )
+                if int(cursor.fetchone()[0]) < 6:
+                    return False, 'database schema is not initialized; run the database migrate command'
             return True, 'postgres repository ready'
         except VectorExtensionUnavailable:
             return False, 'pgvector extension is unavailable'
