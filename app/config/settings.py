@@ -16,6 +16,12 @@ class ExecutionMode(str, Enum):
     CLOUD = 'cloud'
 
 
+class RemediationMode(str, Enum):
+    DISABLED = 'disabled'
+    SIMULATE = 'simulate'
+    EXECUTE = 'execute'
+
+
 def _env(name: str, default: str | None = None) -> str | None:
     return os.getenv(f'OPSPILOT_{name}', os.getenv(name, default))
 
@@ -48,6 +54,9 @@ class Settings(BaseModel):
     mcp_server_url: str | None = Field(default_factory=lambda: _env('MCP_SERVER_URL'))
     mlflow_tracking_uri: str | None = Field(default_factory=lambda: _env('MLFLOW_TRACKING_URI'))
     lora_adapter_path: str | None = Field(default_factory=lambda: _env('LORA_ADAPTER_PATH'))
+    remediation_mode: RemediationMode = Field(
+        default_factory=lambda: RemediationMode(_env('REMEDIATION_MODE', 'simulate') or 'simulate')
+    )
     active_analysis_slots: int = Field(
         default_factory=lambda: int(_env('ACTIVE_ANALYSIS_SLOTS', '1') or '1'),
         ge=1,

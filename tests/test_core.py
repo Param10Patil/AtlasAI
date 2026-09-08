@@ -17,6 +17,8 @@ from app.guardrails.service import GuardrailService
 from app.mcp.server import MCPToolClient, MCPToolServer
 from app.models.schemas import AnalysisResult, RecommendedAction, Severity
 from app.rag.service import RAGService
+from app.remediation.contracts import RemediationContext
+from app.remediation.service import RemediationAgent, SimulatedActionExecutor
 from app.services.runtime import build_runtime
 
 
@@ -44,6 +46,7 @@ async def test_workflow_uses_langgraph_or_declared_fallback():
     assert output.result.evidence
     assert output.details.models['orchestrator'] in {'langgraph', 'sequential-fallback'}
     assert output.details.models['classifier'] == 'fallback'
+    assert output.details.remediation['status'] == 'verified'
 
 
 @pytest.mark.asyncio
@@ -123,3 +126,23 @@ def test_guardrails_reject_destructive_advice():
     decision = GuardrailService().validate(GuardrailContext(proposed_resolution=draft, allowed_evidence_ids=()))
     assert not decision.accepted
     assert 'destructive' in (decision.limitation or '')
+
+
+@pytest.mark.asyncio
+async def test_remediation_is_allowlisted_mcp_mediated_and_health_verified():
+    repository = await build_seed_repository()
+    executor = SimulatedActionExecutor()
+    server = MCPToolServer(RAGService(repository), remediation_executor=executor)
+    client = MCPToolClient(server=server)
+    result = await RemediationAgent(client).remediate(
+        RemediationContext(
+            incident_summary='payment release is unhealthy',
+            service='payment',
+            category='deployment_failure',
+        ),
+        enabled=True,
+    )
+    assert result.status == 'verified'
+    assert result.health_verified
+    assert executor.executions == [('rollback_deployment', 'payment')]
+    assert client.calls[-2:] == ['execute_safe_action', 'verify_health']

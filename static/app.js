@@ -25,6 +25,8 @@ const renderResult = (payload) => {
   document.querySelector('#action-text').textContent = action ? action.text : 'Collect more evidence and review the incident with an operator.';
   document.querySelector('#confidence-value').textContent = Math.round((Number(analysis.confidence) || 0) * 100) + '%';
   const evidence = analysis.evidence || [];
+  const knowledge = details.knowledge || {};
+  document.querySelector('#knowledge-summary').textContent = String(knowledge.runbooks_retrieved || 0) + ' runbook source' + (Number(knowledge.runbooks_retrieved || 0) === 1 ? '' : 's') + ' retrieved · ' + String(knowledge.historical_incidents || 0) + ' historical match' + (Number(knowledge.historical_incidents || 0) === 1 ? '' : 'es');
   document.querySelector('#evidence-count').textContent = evidence.length + ' relevant source' + (evidence.length === 1 ? '' : 's');
   document.querySelector('#limitation-text').textContent = (analysis.limitations || []).join(' · ');
   document.querySelector('#steps-list').innerHTML = (details.steps || []).map((step) => '<li><span>' + escapeHtml(step.name || 'step') + '</span><span>' + escapeHtml(step.status || 'unknown') + '</span></li>').join('');
@@ -33,6 +35,8 @@ const renderResult = (payload) => {
   const models = details.models || {};
   const safety = (details.safety || []).map((item) => '<li><span>' + escapeHtml(item.name || 'safety check') + '</span><span>' + escapeHtml(item.status || 'unknown') + '</span></li>').join('');
   document.querySelector('#model-list').innerHTML = '<li><span>Classifier</span><span>' + escapeHtml(models.classifier || 'fallback') + '</span></li><li><span>Resolution</span><span>' + escapeHtml(models.resolution || 'unknown') + '</span></li>' + safety;
+  const remediation = details.remediation || {};
+  document.querySelector('#remediation-list').innerHTML = '<li><span>Status</span><span>' + escapeHtml(remediation.status || 'disabled') + '</span></li><li><span>Action</span><span>' + escapeHtml(remediation.action || 'none') + '</span></li><li><span>Health</span><span>' + escapeHtml(remediation.health_verified ? 'verified' : 'not verified') + '</span></li>';
   show(resultPanel, true);
 };
 

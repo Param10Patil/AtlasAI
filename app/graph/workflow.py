@@ -12,6 +12,8 @@ from app.graph.state import WorkflowState
 from app.guardrails.contracts import GuardrailContext
 from app.guardrails.service import GuardrailService
 from app.models.schemas import AnalysisResult, Incident
+from app.remediation.contracts import RemediationContext, RemediationResult
+from app.remediation.service import RemediationAgent
 
 try:
     from langgraph.graph import END, START, StateGraph
@@ -26,6 +28,7 @@ class WorkflowDetails:
     tools: tuple[dict[str, str], ...]
     models: dict[str, str]
     safety: tuple[dict[str, str], ...]
+    remediation: dict[str, Any]
     degraded: bool
 
 
@@ -43,12 +46,16 @@ class InvestigationWorkflow:
         resolution: ResolutionAgent,
         repository: Repository,
         guardrails: GuardrailService | None = None,
+        remediation_agent: RemediationAgent | None = None,
+        remediation_enabled: bool = False,
     ):
         self.triage_agent = triage
         self.knowledge_agent = knowledge
         self.resolution_agent = resolution
         self.repository = repository
         self.guardrails = guardrails or GuardrailService()
+        self.remediation_agent = remediation_agent
+        self.remediation_enabled = remediation_enabled
         self.engine = 'langgraph' if StateGraph is not None else 'sequential-fallback'
         self.graph = self._build_graph() if StateGraph is not None else None
 
@@ -88,15 +95,32 @@ class InvestigationWorkflow:
             ))
             return {'guardrail_decision': decision}
 
+        async def remediation_node(state: dict[str, Any]) -> dict[str, Any]:
+            decision = state['guardrail_decision']
+            triage = state['triage_result']
+            evidence = state['evidence']
+            if not decision.accepted or self.remediation_agent is None:
+                return {'remediation': RemediationResult(status='disabled', message='Remediation is not enabled for this result.')}
+            context = RemediationContext(
+                incident_summary=triage.incident_summary,
+                service=triage.service,
+                category=triage.category,
+                probable_causes=tuple(triage.likely_causes),
+                evidence_ids=tuple(item.id for item in evidence.runbook_evidence),
+            )
+            return {'remediation': await self.remediation_agent.remediate(context, enabled=self.remediation_enabled)}
+
         builder.add_node('triage', triage_node)
         builder.add_node('knowledge', knowledge_node)
         builder.add_node('resolution', resolution_node)
         builder.add_node('guardrails', guardrail_node)
+        builder.add_node('remediation', remediation_node)
         builder.add_edge(START, 'triage')
         builder.add_edge('triage', 'knowledge')
         builder.add_edge('knowledge', 'resolution')
         builder.add_edge('resolution', 'guardrails')
-        builder.add_edge('guardrails', END)
+        builder.add_edge('guardrails', 'remediation')
+        builder.add_edge('remediation', END)
         return builder.compile()
 
     async def analyze(self, incident: Incident) -> WorkflowOutput:
@@ -124,17 +148,30 @@ class InvestigationWorkflow:
                 proposed_resolution=resolution,
                 allowed_evidence_ids=evidence_ids,
             ))
+            if state['guardrail_decision'].accepted and self.remediation_agent is not None:
+                context = RemediationContext(
+                    incident_summary=triage.incident_summary,
+                    service=triage.service,
+                    category=triage.category,
+                    probable_causes=tuple(triage.likely_causes),
+                    evidence_ids=tuple(item.id for item in knowledge.runbook_evidence),
+                )
+                state['remediation'] = await self.remediation_agent.remediate(context, enabled=self.remediation_enabled)
+            else:
+                state['remediation'] = RemediationResult(status='disabled', message='Remediation is not enabled for this result.')
         decision = state['guardrail_decision']
         result = decision.result if decision.accepted and decision.result else self._safe_guardrail_result(state, decision.limitation)
         await self.repository.save_result(result)
         triage = state.get('triage_result')
         evidence = state.get('evidence')
+        remediation = state.get('remediation') or RemediationResult(status='disabled', message='Remediation is not enabled for this result.')
         details = WorkflowDetails(
             steps=(
                 {'name': 'triage', 'status': 'complete'},
                 {'name': 'knowledge', 'status': 'complete' if evidence else 'degraded'},
                 {'name': 'resolution', 'status': 'complete'},
                 {'name': 'safety_validation', 'status': 'complete' if decision.accepted else 'degraded'},
+                {'name': 'remediation', 'status': remediation.status},
             ),
             knowledge={
                 'runbooks_retrieved': len(evidence.runbook_evidence) if evidence else 0,
@@ -151,6 +188,7 @@ class InvestigationWorkflow:
                 'orchestrator': self.engine,
             },
             safety=( {'name': 'schema_validation', 'status': 'passed' if decision.accepted else 'limited'}, ),
+            remediation=remediation.model_dump(mode='json'),
             degraded=bool(result.limitations),
         )
         return WorkflowOutput(result, details)

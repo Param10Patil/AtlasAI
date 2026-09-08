@@ -7,5 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY static ./static
 COPY knowledge ./knowledge
+RUN addgroup --system opspilot && adduser --system --ingroup opspilot opspilot \
+    && chown -R opspilot:opspilot /app
+USER opspilot
 EXPOSE 8080
-CMD exec uvicorn app.main:app --host 0.0.0.0 --port \${PORT:-8080}
+CMD ["python", "-m", "app.run"]

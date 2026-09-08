@@ -49,6 +49,7 @@ def _public_payload(output: Any) -> dict[str, Any]:
             'tools': list(details.tools),
             'models': details.models,
             'safety': list(details.safety),
+            'remediation': details.remediation,
             'degraded': details.degraded,
         },
     }

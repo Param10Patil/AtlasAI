@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from app.agents.knowledge import KnowledgeAgent
 from app.agents.resolution import ResolutionAgent
 from app.agents.triage import TriageAgent
-from app.config.settings import Settings
+from app.config.settings import RemediationMode, Settings
 from app.database.repository import InMemoryRepository, PostgresRepository, Repository
 from app.database.seed import build_seed_repository, seed_postgres
 from app.graph.workflow import InvestigationWorkflow, WorkflowOutput
@@ -13,6 +13,7 @@ from app.mcp.server import MCPToolClient, MCPToolServer
 from app.ml.classifier import build_classifier
 from app.providers.llm import HTTPLLMProvider, RuleBasedLLMProvider
 from app.rag.service import RAGService
+from app.remediation.service import RemediationAgent, SimulatedActionExecutor
 
 
 @dataclass
@@ -55,7 +56,8 @@ async def build_runtime(settings: Settings | None = None) -> ApplicationRuntime:
         except Exception:  # noqa: BLE001
             return ApplicationRuntime(settings, repository, _empty_workflow(), False, 'database unavailable')
     rag = RAGService(repository)
-    mcp_server = MCPToolServer(rag)
+    remediation_executor = SimulatedActionExecutor()
+    mcp_server = MCPToolServer(rag, remediation_executor=remediation_executor)
     mcp_client = MCPToolClient(server=mcp_server) if not settings.mcp_server_url else MCPToolClient(server_url=settings.mcp_server_url)
     classifier = build_classifier(settings.lora_adapter_path)
     triage = TriageAgent(classifier)
@@ -69,12 +71,27 @@ async def build_runtime(settings: Settings | None = None) -> ApplicationRuntime:
         )
     else:
         provider = RuleBasedLLMProvider()
-    workflow = InvestigationWorkflow(triage, knowledge, ResolutionAgent(provider), repository)
+    remediation = RemediationAgent(mcp_client)
+    workflow = InvestigationWorkflow(
+        triage,
+        knowledge,
+        ResolutionAgent(provider),
+        repository,
+        remediation_agent=remediation,
+        remediation_enabled=settings.remediation_mode is not RemediationMode.DISABLED,
+    )
     return ApplicationRuntime(settings, repository, workflow, True, readiness)
 
 
 def _empty_workflow() -> InvestigationWorkflow:
     repository = InMemoryRepository()
     rag = RAGService(repository)
-    mcp = MCPToolClient(server=MCPToolServer(rag))
-    return InvestigationWorkflow(TriageAgent(), KnowledgeAgent(mcp), ResolutionAgent(), repository)
+    mcp = MCPToolClient(server=MCPToolServer(rag, remediation_executor=SimulatedActionExecutor()))
+    return InvestigationWorkflow(
+        TriageAgent(),
+        KnowledgeAgent(mcp),
+        ResolutionAgent(),
+        repository,
+        remediation_agent=RemediationAgent(mcp),
+        remediation_enabled=False,
+    )
