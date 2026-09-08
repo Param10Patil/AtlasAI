@@ -50,6 +50,7 @@ class EvidenceItem(BaseModel):
 class RecommendedAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    rank: int = Field(default=1, ge=1, le=5)
     text: str = Field(min_length=1, max_length=500)
     requires_confirmation: bool = True
 

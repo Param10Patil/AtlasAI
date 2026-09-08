@@ -49,6 +49,7 @@ async def test_workflow_uses_langgraph_or_declared_fallback():
     output = await runtime.analyze('Our payment API started returning 503 errors after today deployment.')
     assert output.result.severity is Severity.HIGH
     assert output.result.evidence
+    assert output.result.recommended_actions[0].rank == 1
     assert output.details.models['orchestrator'] in {'langgraph', 'sequential-fallback'}
     assert output.details.models['classifier'] == 'fallback'
     assert output.details.remediation['status'] == 'verified'
