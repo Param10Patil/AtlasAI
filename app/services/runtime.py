@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from app.agents.knowledge import KnowledgeAgent
 from app.agents.resolution import ResolutionAgent
 from app.agents.triage import TriageAgent
-from app.config.settings import ExecutionMode, Settings
+from app.config.settings import Settings
 from app.database.repository import InMemoryRepository, PostgresRepository, Repository
 from app.database.seed import build_seed_repository, seed_postgres
 from app.graph.workflow import InvestigationWorkflow, WorkflowOutput
@@ -50,7 +50,9 @@ async def build_runtime(settings: Settings | None = None) -> ApplicationRuntime:
             if not ready:
                 return ApplicationRuntime(settings, repository, _empty_workflow(), False, readiness)
             await seed_postgres(repository)
-        except Exception:
+        # Initialization is an infrastructure boundary; expose only a safe
+        # readiness state and let the request layer remain available.
+        except Exception:  # noqa: BLE001
             return ApplicationRuntime(settings, repository, _empty_workflow(), False, 'database unavailable')
     rag = RAGService(repository)
     mcp_server = MCPToolServer(rag)

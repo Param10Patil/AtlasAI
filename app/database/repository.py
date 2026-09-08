@@ -1,13 +1,14 @@
 '''Repository interfaces and small deterministic/infrastructure adapters.'''
 
 import asyncio
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import json
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Protocol, Sequence
-from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
+from typing import Any, Protocol
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from app.models.schemas import AnalysisResult, Incident
 
@@ -141,7 +142,9 @@ class PostgresRepository:
             return True, 'postgres repository ready'
         except VectorExtensionUnavailable:
             return False, 'pgvector extension is unavailable'
-        except Exception:
+        # Driver-specific errors are intentionally contained at this public
+        # readiness boundary so connection details never escape the API.
+        except Exception:  # noqa: BLE001
             return False, 'database unavailable'
 
     async def health(self) -> tuple[bool, str]:

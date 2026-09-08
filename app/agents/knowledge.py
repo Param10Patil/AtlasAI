@@ -1,7 +1,10 @@
 '''Knowledge agent that talks to MCP rather than database internals.'''
 
+from pydantic import ValidationError
+
 from app.agents.ports import EvidenceBundle, KnowledgeContext
 from app.mcp.server import MCPMalformedResponse, MCPToolClient, MCPUnavailable
+from app.models.schemas import EvidenceItem
 
 
 class KnowledgeAgent:
@@ -32,12 +35,11 @@ class KnowledgeAgent:
             ]
         except (MCPUnavailable, MCPMalformedResponse):
             limitations.append('Incident history service unavailable')
-        from app.models.schemas import EvidenceItem
         evidence = []
         for item in runbooks:
             try:
                 evidence.append(EvidenceItem.model_validate(item))
-            except Exception:
+            except ValidationError:
                 limitations.append('Evidence service returned malformed runbook data')
         evidence = evidence[:5]
         return EvidenceBundle(

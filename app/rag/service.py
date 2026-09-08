@@ -1,11 +1,16 @@
 '''Repeatable, evidence-preserving RAG ingestion and retrieval.'''
 
-from dataclasses import replace
-from pathlib import Path
 import re
-from typing import Sequence
+from collections.abc import Sequence
+from dataclasses import replace
 
-from app.database.repository import HistoricalRecord, InMemoryRepository, KnowledgeRecord, PostgresRepository, Repository
+from app.database.repository import (
+    HistoricalRecord,
+    InMemoryRepository,
+    KnowledgeRecord,
+    PostgresRepository,
+    Repository,
+)
 from app.models.schemas import EvidenceItem
 from app.providers.embeddings import HashEmbeddingProvider
 

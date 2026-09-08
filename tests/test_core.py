@@ -1,15 +1,19 @@
 import pytest
 from pydantic import ValidationError
 
-from app.agents.ports import TriageContext
-from app.agents.triage import TriageAgent
 from app.agents.knowledge import KnowledgeAgent
+from app.agents.ports import (
+    EvidenceBundle,
+    KnowledgeContext,
+    ResolutionContext,
+    TriageContext,
+)
 from app.agents.resolution import ResolutionAgent
-from app.agents.ports import EvidenceBundle, KnowledgeContext, ResolutionContext
+from app.agents.triage import TriageAgent
 from app.database.seed import build_seed_repository
-from app.mcp.server import MCPToolClient, MCPToolServer
 from app.guardrails.contracts import GuardrailContext
 from app.guardrails.service import GuardrailService
+from app.mcp.server import MCPToolClient, MCPToolServer
 from app.models.schemas import AnalysisResult, RecommendedAction, Severity
 from app.rag.service import RAGService
 from app.services.runtime import build_runtime

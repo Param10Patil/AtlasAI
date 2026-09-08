@@ -4,8 +4,8 @@ Both the repository-prefixed names and the short names from the product brief
 are accepted. Prefixed values win, which keeps Compose and Cloud Run explicit.
 '''
 
-from enum import Enum
 import os
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 

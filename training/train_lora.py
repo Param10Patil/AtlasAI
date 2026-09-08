@@ -4,11 +4,10 @@ Run from the repository root or from training/. Dependencies are deliberately
 isolated in training/requirements.txt and are never imported by the API.
 '''
 
-from argparse import ArgumentParser
 import json
+from argparse import ArgumentParser
 from pathlib import Path
 from typing import Any
-
 
 LABELS = (
     'deployment_failure',
@@ -28,7 +27,12 @@ def train(dataset_path: Path, output_dir: Path, base_model: str, epochs: float, 
     try:
         from datasets import Dataset
         from peft import LoraConfig, TaskType, get_peft_model
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
+        from transformers import (
+            AutoModelForSequenceClassification,
+            AutoTokenizer,
+            Trainer,
+            TrainingArguments,
+        )
     except ImportError as exc:
         raise RuntimeError('install training/requirements.txt to run the LoRA experiment') from exc
     rows = _rows(dataset_path)

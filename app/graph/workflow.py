@@ -8,9 +8,9 @@ from app.agents.ports import KnowledgeContext, ResolutionContext, TriageContext
 from app.agents.resolution import ResolutionAgent
 from app.agents.triage import TriageAgent
 from app.database.repository import Repository
+from app.graph.state import WorkflowState
 from app.guardrails.contracts import GuardrailContext
 from app.guardrails.service import GuardrailService
-from app.graph.state import WorkflowState
 from app.models.schemas import AnalysisResult, Incident
 
 try:

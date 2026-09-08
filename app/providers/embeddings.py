@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import json
 import math
-from typing import Sequence
+from collections.abc import Sequence
 from urllib.request import Request, urlopen
 
 

@@ -1,6 +1,7 @@
 """Provider protocols with no vendor-specific import at the domain boundary."""
 
-from typing import Protocol, Sequence
+from collections.abc import Sequence
+from typing import Protocol
 
 
 class LLMProvider(Protocol):

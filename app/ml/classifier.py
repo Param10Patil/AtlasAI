@@ -1,9 +1,9 @@
 '''Incident category classifier with an honest deterministic fallback.'''
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from pathlib import Path
-
+from typing import ClassVar
 
 LABELS = (
     'deployment_failure',
@@ -26,7 +26,7 @@ class Classification:
 class FallbackClassifier:
     '''Small transparent keyword baseline used when no adapter is available.'''
 
-    keywords = {
+    keywords: ClassVar[dict[str, set[str]]] = {
         'deployment_failure': {'deploy', 'deployment', 'release', 'rollout', 'image', 'crashloop'},
         'database_failure': {'database', 'db', 'postgres', 'sql', 'connection', 'pool', 'deadlock'},
         'authentication_failure': {'auth', 'login', 'token', 'credential', '401', '403', 'permission'},

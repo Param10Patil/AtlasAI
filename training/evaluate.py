@@ -1,9 +1,8 @@
 '''Evaluate a saved classifier adapter without fabricating unavailable metrics.'''
 
-from argparse import ArgumentParser
 import json
+from argparse import ArgumentParser
 from pathlib import Path
-
 
 LABELS = ('deployment_failure', 'database_failure', 'authentication_failure', 'network_failure', 'performance_issue', 'availability_issue')
 

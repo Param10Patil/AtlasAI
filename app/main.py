@@ -101,7 +101,8 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         except TimeoutError:
             from fastapi.responses import JSONResponse
             return JSONResponse(status_code=504, content={'error': {'code': 'WORKFLOW_TIMEOUT', 'message': 'The investigation took too long. Please try again.', 'retryable': True}})
-        except Exception:
+        # Keep unexpected provider/database details out of the public response.
+        except Exception:  # noqa: BLE001
             from fastapi.responses import JSONResponse
             return JSONResponse(status_code=500, content={'error': {'code': 'INVESTIGATION_FAILED', 'message': 'OpsPilot could not complete the investigation. Please try again.', 'retryable': True}})
 
