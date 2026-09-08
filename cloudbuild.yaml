@@ -3,17 +3,51 @@ substitutions:
   _REPOSITORY: opspilot
   _IMAGE_TAG: manual
 steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -ceu
+      - test -n $_IMAGE_TAG && test $_IMAGE_TAG != manual
   - name: gcr.io/cloud-builders/docker
     args:
       - build
       - -t
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/opspilot:${_IMAGE_TAG}
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/opspilot:${_IMAGE_TAG}'
       - .
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/opspilot:${_IMAGE_TAG}
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/opspilot:${_IMAGE_TAG}'
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - opspilot
+      - --image
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/opspilot:${_IMAGE_TAG}'
+      - --region
+      - '${_REGION}'
+      - --platform
+      - managed
+      - --min
+      - '0'
+      - --max
+      - '1'
+      - --concurrency
+      - '8'
+      - --timeout
+      - '300'
+      - --cpu
+      - '1'
+      - --memory
+      - 512Mi
+      - --cpu-throttling
+      - --set-env-vars
+      - OPSPILOT_APP_ENV=cloud,OPSPILOT_EXECUTION_MODE=in_process,OPSPILOT_ACTIVE_ANALYSIS_SLOTS=1,OPSPILOT_QUEUE_CAPACITY=1,OPSPILOT_REMEDIATION_MODE=simulate
+      - --set-secrets
+      - OPSPILOT_DATABASE_URL=opspilot-database-url:latest,OPSPILOT_LLM_API_KEY=opspilot-llm-api-key:latest
 images:
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/opspilot:${_IMAGE_TAG}
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/opspilot:${_IMAGE_TAG}'
 options:
   logging: CLOUD_LOGGING_ONLY

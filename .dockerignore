@@ -7,3 +7,13 @@ training/artifacts
 mlruns
 tests
 docs
+README.md
+.env
+.env.*
+training
+k8s
+coverage
+*.sqlite
+*.db
+*.log
+screenshots
