@@ -282,6 +282,11 @@ code { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Consolas
 .operation-preview dl { display: grid; gap: 8px; margin: 0; }
 .recovery-proof { margin-top: 14px; padding: 20px; border: 1px solid #2c5e62; border-radius: 10px; background: linear-gradient(135deg, rgb(66 167 161 / 8%), rgb(20 27 34 / 92%)); }
 .recovery-columns { display: grid; grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 15px; }
+.change-proof { margin-top: 14px; padding: 20px; box-shadow: none; }
+.change-grid { display: grid; grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1fr); align-items: stretch; gap: 10px; margin-top: 15px; }
+.change-grid > div { display: grid; gap: 8px; }
+.change-grid .overview-metric { padding: 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-3); }
+.source-note { display: flex; align-items: center; gap: 9px; margin-top: 15px; color: var(--dim); font-size: 10px; overflow-wrap: anywhere; }
 .recovery-divider { color: var(--accent); font-size: 20px; text-align: center; }
 .how-know p { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgb(4 8 12 / 78%); backdrop-filter: blur(5px); }
@@ -294,7 +299,7 @@ code { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Consolas
 .modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 21px; }
 .error-explanation { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 @media (max-width: 700px) {
-  .proof-grid, .recovery-columns { grid-template-columns: 1fr; }
+  .proof-grid, .recovery-columns, .change-grid { grid-template-columns: 1fr; }
   .recovery-divider { transform: rotate(90deg); }
   .modal-actions { flex-direction: column-reverse; }
   .modal-actions button { width: 100%; }
