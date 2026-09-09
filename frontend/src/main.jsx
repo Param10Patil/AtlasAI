@@ -83,7 +83,8 @@ function Header({ runtime }) {
 }
 
 function Overview({ runtime, cluster, observation, clusterError, onInspect }) {
-  const tone = runtime.cluster === 'connected' ? 'good' : runtime.cluster === 'checking' ? 'warn' : 'bad';
+  const observed = observation?.connection === 'connected' || cluster?.connection === 'connected';
+  const tone = observed ? 'good' : runtime.cluster === 'checking' ? 'warn' : 'bad';
   const health = observation?.health?.status || (cluster ? 'observed' : 'offline');
   return <aside className="overview-panel" aria-label="Operations overview">
     <div className="overview-heading"><p className="eyebrow">OVERVIEW</p><span className="live-label"><Dot state={tone} /> LIVE STATE</span></div>
@@ -95,9 +96,11 @@ function Overview({ runtime, cluster, observation, clusterError, onInspect }) {
 }
 
 function ClusterHealthProof({ runtime, cluster, observation, clusterError, onInspect }) {
-  const connected = runtime.cluster === 'connected';
+  const connected = observation?.connection === 'connected' || cluster?.connection === 'connected';
+  const configured = runtime.cluster === 'connected';
   const health = observation?.health?.status || (cluster ? 'observed' : 'offline');
-  return <section className="cluster-proof command-card" aria-label="Live cluster proof"><div className="proof-heading"><div><p className="eyebrow">LIVE PROOF</p><h2>{connected ? 'Observed from Kubernetes' : 'Control plane unavailable'}</h2></div><Badge tone={connected ? healthTone(health) : 'bad'}>{humanize(health)}</Badge></div><p className="proof-message">{connected ? 'Namespace ' + runtime.namespace + ', workload ' + resourceName(runtime.workload) + '. Counts below are read from the Kubernetes API observation boundary.' : clusterError || 'No Kubernetes observation was returned. Read-only analysis remains available.'}</p><div className="proof-grid"><NumberMetric label="Deployments" value={cluster ? finite(cluster.deployments_available) + ' / ' + finite(cluster.deployments_total) : '—'} detail="available / desired" /><NumberMetric label="Pods" value={cluster ? finite(cluster.pods_ready) + ' / ' + finite(cluster.pods_total) : '—'} detail="ready / observed" /></div>{!connected && <div className="offline-proof"><Dot state="bad" /><span>Control-plane offline is distinct from a workload health failure.</span></div>}{connected && observation?.health?.status === 'degraded' && <div className="offline-proof workload-warning"><Dot state="bad" /><span>The cluster is reachable; this workload is unhealthy from observed replicas, readiness, restarts, or events.</span></div>}<button className="quiet-button" type="button" onClick={onInspect}>Inspect current cluster <span aria-hidden="true">→</span></button><div className="execution-state"><span className="footer-key">{runtime.mode === 'execute' ? 'EXECUTE' : 'READ ONLY'}</span><span>{runtime.mode === 'execute' ? 'Mutations are limited to the four safe MCP actions.' : 'Connect an approved executor to mutate the demo workload.'}</span></div></section>;
+  const title = connected ? 'Observed from Kubernetes' : configured ? 'Live observation unavailable' : 'Control plane unavailable';
+  return <section className="cluster-proof command-card" aria-label="Live cluster proof"><div className="proof-heading"><div><p className="eyebrow">LIVE PROOF</p><h2>{title}</h2></div><Badge tone={connected ? healthTone(health) : configured ? 'warn' : 'bad'}>{connected ? humanize(health) : configured ? 'Unverified' : 'Offline'}</Badge></div><p className="proof-message">{connected ? 'Namespace ' + runtime.namespace + ', workload ' + resourceName(runtime.workload) + '. Counts below are read from the Kubernetes API observation boundary.' : clusterError || 'No Kubernetes observation was returned. Read-only analysis remains available.'}</p><div className="proof-grid"><NumberMetric label="Deployments" value={cluster ? finite(cluster.deployments_available) + ' / ' + finite(cluster.deployments_total) : '—'} detail="available / desired" /><NumberMetric label="Pods" value={cluster ? finite(cluster.pods_ready) + ' / ' + finite(cluster.pods_total) : '—'} detail="ready / observed" /></div>{!connected && <div className="offline-proof"><Dot state={configured ? 'warn' : 'bad'} /><span>{configured ? 'The runtime is configured, but a live API observation has not been verified.' : 'Control-plane offline is distinct from a workload health failure.'}</span></div>}{connected && observation?.health?.status === 'degraded' && <div className="offline-proof workload-warning"><Dot state="bad" /><span>The cluster is reachable; this workload is unhealthy from observed replicas, readiness, restarts, or events.</span></div>}<button className="quiet-button" type="button" onClick={onInspect}>Inspect current cluster <span aria-hidden="true">→</span></button><div className="execution-state"><span className="footer-key">{runtime.mode === 'execute' ? 'EXECUTE' : 'READ ONLY'}</span><span>{runtime.mode === 'execute' ? 'Mutations are limited to the four safe MCP actions.' : 'Connect an approved executor to mutate the demo workload.'}</span></div></section>;
 }
 
 function CommandHeader({ onInspect, disabled }) { return <div className="command-heading"><div><p className="eyebrow">INCIDENT COMMAND CENTER</p><h1>Make the next decision obvious.</h1><p className="command-lede">Combine a human signal with live observations, then let evidence and policy shape the response.</p></div><button className="outline-button" type="button" onClick={onInspect} disabled={disabled} title="Read the approved demo workload from Kubernetes">Inspect cluster</button></div>; }
@@ -201,12 +204,12 @@ function App() {
   const simulationEnabled = runtime.cluster === 'connected' && runtime.mode === 'execute';
 
   const loadCluster = async () => {
-    try { const response = await fetch('/api/cluster/summary'); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.message || 'Cluster summary unavailable.'); setCluster(payload); setClusterError(''); }
-    catch (caught) { setCluster(null); setClusterError(textValue(caught.message, 'Cluster connection unavailable.')); }
+    try { const response = await fetch('/api/cluster/summary'); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.message || 'Cluster summary unavailable.'); setCluster(payload); setRuntime((current) => ({ ...current, cluster: payload.connection === 'connected' ? 'connected' : 'offline' })); setClusterError(''); }
+    catch (caught) { setCluster(null); setRuntime((current) => ({ ...current, cluster: 'offline' })); setClusterError(textValue(caught.message, 'Cluster connection unavailable.')); }
   };
   const inspectCluster = async () => {
-    try { const response = await fetch('/api/cluster/observations'); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.message || 'Cluster observations unavailable.'); setObservation(payload); setClusterError(''); await loadCluster(); }
-    catch (caught) { setClusterError(textValue(caught.message, 'Cluster observations unavailable.')); }
+    try { const response = await fetch('/api/cluster/observations'); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.message || 'Cluster observations unavailable.'); setObservation(payload); setRuntime((current) => ({ ...current, cluster: payload.connection === 'connected' ? 'connected' : 'offline' })); setClusterError(''); await loadCluster(); }
+    catch (caught) { setRuntime((current) => ({ ...current, cluster: 'offline' })); setClusterError(textValue(caught.message, 'Cluster observations unavailable.')); }
   };
   useEffect(() => {
     let active = true;
