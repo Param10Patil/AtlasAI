@@ -14,7 +14,7 @@ generative LLM and never changes the web runtime.
 ```
 
 The requirements select wheel-backed Torch 2.5.0, Transformers 4.46.3,
-NumPy 2.1.3, tokenizers 0.20.3, and safetensors 0.4.4 for Colab's current
+Accelerate 1.10.1, NumPy 2.1.3, tokenizers 0.20.3, and safetensors 0.4.4 for Colab's current
 Python 3.13 image. Pip therefore does not compile the older Python 3.11
 source-package versions.
 
