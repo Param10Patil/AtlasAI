@@ -195,6 +195,10 @@ code { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Consolas
 .technical-list li, .context-list li { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 .technical-list li { justify-content: flex-start; }
 .technical-list li .dot { margin-right: 2px; }
+.tool-detail { min-width: 0; flex: 1; }
+.tool-detail summary { color: var(--muted); cursor: pointer; font-size: 11px; }
+.tool-detail p, .tool-detail small { display: block; margin: 6px 0 0; color: var(--dim); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.tool-detail small { color: var(--good); }
 .technical-list strong { margin-left: auto; color: var(--good); font-size: 10px; }
 .context-list span { color: var(--dim); font-size: 10px; text-align: right; }
 .technical-copy { margin: 11px 0 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
