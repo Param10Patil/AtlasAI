@@ -10,10 +10,19 @@ deployment: every operational status comes from an observation, every
 mutation is allowlisted, and optional AI or cloud integrations are labelled
 when they are not connected.
 
-![AtlasAI overview](assets/atlasai-overview.png)
+## Console in four real views
 
-_The screenshot above was captured in a local Edge browser at 1440 × 1100
-against the verification container. It is a real UI capture, not a mockup._
+<p align="center">
+  <img src="assets/atlasai-overview.png" width="49%" alt="AtlasAI overview with live Kubernetes health proof" />
+  <img src="assets/atlasai-investigate.png" width="49%" alt="AtlasAI incident investigation composer" />
+  <img src="assets/atlasai-experiments.png" width="49%" alt="AtlasAI MLflow experiments status" />
+  <img src="assets/atlasai-demo.png" width="49%" alt="AtlasAI controlled Kubernetes demo environment" />
+</p>
+
+_These are real Edge browser captures at 1440 × 1100 from the deployed Vercel
+site. The Overview and Demo views include a live connected Kubernetes
+observation; the other views show the actual investigation and training-status
+surfaces—not mockups._
 
 ## The story of one incident
 
@@ -99,7 +108,7 @@ flowchart LR
 | LoRA artifact | **Validated** | Label map, metadata, checksums, manifest, and held-out metrics pass validation |
 | LoRA runtime inference | **Unavailable in the lightweight image** | Torch/Transformers/PEFT and the ignored artifact are intentionally not packaged there |
 | MLflow server | **Not connected** | The UI does not invent run IDs or metrics |
-| Cloud Run demo | **Verified** | [`atlasai-330402458472.us-central1.run.app`](https://atlasai-330402458472.us-central1.run.app) returns `status: ready`; service/revision max 1, scale-to-zero |
+| Cloud Run + hosted Kubernetes | **Verified** | [`atlasai-330402458472.us-central1.run.app`](https://atlasai-330402458472.us-central1.run.app) returns `status: ready`; `/api/cluster/summary` reports the real GKE `ops-demo/checkout-api` workload connected and healthy (`1/1`) |
 | Vercel frontend | **Verified** | [`atlasai-tawny.vercel.app`](https://atlasai-tawny.vercel.app) serves the AtlasAI UI and embeds the Cloud Run API URL |
 | Secret-backed Cloud Run pipeline | **Partial** | Image build is verified; declarative deploy still needs the two Secret Manager versions named in `cloudbuild.yaml` |
 
@@ -149,18 +158,22 @@ still required before a live action.
 ## Cloud Run deployment
 
 The verified demo service is configured for cost-controlled single-instance
-operation:
+operation and a real, namespace-scoped GKE connection:
 
 - minimum instances: `0`
 - maximum instances: `1`
 - one active analysis slot and queue capacity of one
-- default remediation mode: `simulate`
-- no Kubernetes credentials in the Cloud Run image
+- VPC connector: `atlasai-connector` with private-range egress to the GKE
+  control plane
+- Kubernetes token and CA are injected from Secret Manager; they are not in
+  the image or repository
+- `OPSPILOT_KUBERNETES_MODE=execute`, while automatic remediation remains off
+  and every live action still requires an explicit approval
 
 Live demo URL: <https://atlasai-330402458472.us-central1.run.app>. It uses the
-memory repository, disables Kubernetes execution, and is intentionally not a
-production secret-backed deployment. Its `/api/ready` response is the source
-of truth for that posture.
+memory repository (so incident history is ephemeral), but its Kubernetes
+observation boundary is real and secret-backed. Its `/api/ready` and
+`/api/cluster/summary` responses are the source of truth for that posture.
 
 After enabling billing, Artifact Registry, Cloud Build, Secret Manager, and
 Cloud Run in the selected Google Cloud project, create the two secrets named
@@ -216,7 +229,9 @@ never fabricates a LoRA result.
   `clear_temporary_condition` are allowlisted.
 - Live actions require a connected observation, policy validation, and explicit
   approval.
-- The default Cloud Run and Compose modes are simulation/read-only.
+- Compose remains simulation/read-only by default. The hosted Cloud Run demo
+  has an execute-capable Kubernetes client, but automatic remediation is off
+  and live changes remain approval-gated.
 - Secrets, model weights, `docs/`, MLflow stores, and local kubeconfig files
   stay out of Git.
 
