@@ -41,6 +41,7 @@ class KubernetesObserver(Protocol):
 class KubernetesService:
     """One policy-scoped adapter for reads, demo injection, and safe actions."""
 
+    _request_timeout_seconds: ClassVar[int] = 5
     _name_pattern = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
     _allowed_scenarios: ClassVar[frozenset[str]] = frozenset({"deployment_failure", "pod_crash", "rollout_failure"})
     _allowed_actions: ClassVar[frozenset[str]] = frozenset({"restart_pod", "scale_deployment", "rollback_deployment", "clear_temporary_condition"})
@@ -120,9 +121,9 @@ class KubernetesService:
         if self._load_error or self._apps is None or self._core is None:
             return self._offline(namespace, workload, self._load_error or "Kubernetes client unavailable")
         try:
-            deployment = self._apps.read_namespaced_deployment(workload, namespace)
-            pods = self._core.list_namespaced_pod(namespace, label_selector=f"app.kubernetes.io/name={workload}").items
-            events = self._core.list_namespaced_event(namespace).items
+            deployment = self._apps.read_namespaced_deployment(workload, namespace, _request_timeout=self._request_timeout_seconds)
+            pods = self._core.list_namespaced_pod(namespace, label_selector=f"app.kubernetes.io/name={workload}", _request_timeout=self._request_timeout_seconds).items
+            events = self._core.list_namespaced_event(namespace, _request_timeout=self._request_timeout_seconds).items
         except self._api_exception as exc:
             if getattr(exc, "status", None) == 404:
                 return self._offline(namespace, workload, "approved demo workload was not found")
@@ -157,8 +158,8 @@ class KubernetesService:
                 limitations=[self._load_error or "Kubernetes client unavailable"],
             )
         try:
-            deployments = self._apps.list_namespaced_deployment(namespace).items
-            pods = self._core.list_namespaced_pod(namespace).items
+            deployments = self._apps.list_namespaced_deployment(namespace, _request_timeout=self._request_timeout_seconds).items
+            pods = self._core.list_namespaced_pod(namespace, _request_timeout=self._request_timeout_seconds).items
         except Exception:  # noqa: BLE001
             return NamespaceSummary(connection=ConnectionStatus.OFFLINE, namespace=namespace, limitations=["Kubernetes summary request failed"])
         observations = [self._deployment(item, namespace) for item in deployments[:20]]
@@ -185,7 +186,7 @@ class KubernetesService:
         if self._load_error or self._apps is None:
             raise KubernetesUnavailable("Kubernetes is unavailable")
         try:
-            deployment = self._apps.read_namespaced_deployment(self.workload, self.namespace)
+            deployment = self._apps.read_namespaced_deployment(self.workload, self.namespace, _request_timeout=self._request_timeout_seconds)
             annotations = dict(getattr(deployment.metadata, "annotations", None) or {})
             containers = getattr(getattr(deployment.spec, "template", None).spec, "containers", [])
             if containers:
@@ -202,7 +203,7 @@ class KubernetesService:
             else:
                 container_patch["readinessProbe"] = {"httpGet": {"path": "/opspilot-not-ready", "port": 80}, "periodSeconds": 2}
             patch["spec"] = {"template": {"spec": {"containers": [container_patch]}}}
-            self._apps.patch_namespaced_deployment(self.workload, self.namespace, patch)
+            self._apps.patch_namespaced_deployment(self.workload, self.namespace, patch, _request_timeout=self._request_timeout_seconds)
         except self._api_exception as exc:
             raise KubernetesUnavailable("controlled incident could not be injected") from exc
         return self._observe_sync(self.namespace, self.workload)
@@ -223,7 +224,7 @@ class KubernetesService:
             raise KubernetesUnavailable("Kubernetes is unavailable")
         try:
             if action == "scale_deployment":
-                self._apps.patch_namespaced_deployment(workload, namespace, {"spec": {"replicas": 1}})
+                self._apps.patch_namespaced_deployment(workload, namespace, {"spec": {"replicas": 1}}, _request_timeout=self._request_timeout_seconds)
             elif action == "rollback_deployment":
                 self._rollback(workload, namespace)
             else:
@@ -241,14 +242,14 @@ class KubernetesService:
         return namespace, workload
 
     def _restart(self, workload: str, namespace: str) -> None:
-        pods = self._core.list_namespaced_pod(namespace, label_selector=f"app.kubernetes.io/name={workload}").items
+        pods = self._core.list_namespaced_pod(namespace, label_selector=f"app.kubernetes.io/name={workload}", _request_timeout=self._request_timeout_seconds).items
         if not pods:
             raise KubernetesUnavailable("no approved workload pod exists")
         selected = next((pod for pod in pods if not self._pod(pod).ready), pods[0])
-        self._core.delete_namespaced_pod(selected.metadata.name, namespace, grace_period_seconds=5)
+        self._core.delete_namespaced_pod(selected.metadata.name, namespace, grace_period_seconds=5, _request_timeout=self._request_timeout_seconds)
 
     def _rollback(self, workload: str, namespace: str) -> None:
-        deployment = self._apps.read_namespaced_deployment(workload, namespace)
+        deployment = self._apps.read_namespaced_deployment(workload, namespace, _request_timeout=self._request_timeout_seconds)
         annotations = getattr(deployment.metadata, "annotations", None) or {}
         image = annotations.get("opspilot.io/healthy-image")
         command_raw = annotations.get("opspilot.io/healthy-command")
@@ -272,7 +273,7 @@ class KubernetesService:
                 container["readinessProbe"] = readiness
             except json.JSONDecodeError:
                 raise KubernetesUnavailable("recorded readiness target is invalid")
-        self._apps.patch_namespaced_deployment(workload, namespace, {"spec": {"template": {"spec": {"containers": [container]}}}})
+        self._apps.patch_namespaced_deployment(workload, namespace, {"spec": {"template": {"spec": {"containers": [container]}}}}, _request_timeout=self._request_timeout_seconds)
 
     async def verify_health(self, target: str) -> bool:
         namespace, workload = self._target(target)

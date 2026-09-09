@@ -107,10 +107,10 @@ def test_rollback_patch_removes_injected_command_when_healthy_revision_had_none(
         def __init__(self):
             self.patch = None
 
-        def read_namespaced_deployment(self, name, namespace):
+        def read_namespaced_deployment(self, name, namespace, **kwargs):
             return deployment
 
-        def patch_namespaced_deployment(self, name, namespace, patch):
+        def patch_namespaced_deployment(self, name, namespace, patch, **kwargs):
             self.patch = patch
 
     service = KubernetesService(mode='execute')
