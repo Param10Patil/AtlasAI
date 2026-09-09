@@ -57,6 +57,9 @@ class Settings(BaseModel):
     remediation_mode: RemediationMode = Field(
         default_factory=lambda: RemediationMode(_env('REMEDIATION_MODE', 'simulate') or 'simulate')
     )
+    kubernetes_mode: str = Field(default_factory=lambda: _env('KUBERNETES_MODE', 'disabled') or 'disabled')
+    kubernetes_namespace: str = Field(default_factory=lambda: _env('KUBERNETES_NAMESPACE', 'ops-demo') or 'ops-demo', max_length=63)
+    kubernetes_workload: str = Field(default_factory=lambda: _env('KUBERNETES_WORKLOAD', 'checkout-api') or 'checkout-api', max_length=120)
     active_analysis_slots: int = Field(
         default_factory=lambda: int(_env('ACTIVE_ANALYSIS_SLOTS', '1') or '1'),
         ge=1,
@@ -98,4 +101,10 @@ class Settings(BaseModel):
             errors.append('DATABASE_URL must point to external PostgreSQL in cloud mode')
         if self.execution_mode is ExecutionMode.CLOUD and not self.llm_api_key:
             errors.append('LLM_API_KEY is required in cloud mode')
+        if self.kubernetes_mode not in {'disabled', 'observe', 'execute'}:
+            errors.append('KUBERNETES_MODE must be disabled, observe, or execute')
+        if self.kubernetes_namespace != 'ops-demo':
+            errors.append('KUBERNETES_NAMESPACE must remain ops-demo for the protected demo boundary')
+        if not self.kubernetes_workload or not self.kubernetes_workload.replace('-', '').isalnum():
+            errors.append('KUBERNETES_WORKLOAD must be a DNS-safe workload name')
         return errors

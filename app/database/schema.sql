@@ -71,8 +71,10 @@ create table if not exists analysis_jobs (
   lease_owner varchar(120),
   lease_expires_at timestamptz,
   error_code varchar(80),
-  result_payload jsonb
+  result_payload jsonb,
+  incident_payload jsonb
 );
+alter table analysis_jobs add column if not exists incident_payload jsonb;
 
 create index if not exists analysis_jobs_fifo_idx on analysis_jobs(status, created_at, id);
 create unique index if not exists analysis_jobs_one_running_idx

@@ -17,7 +17,8 @@ class KnowledgeAgent:
         # retrieve the category's runbook even when the symptoms disagree.
         category_hint = context.category.replace('_', ' ')
         search_terms = [term for term in context.search_terms if term != category_hint]
-        query = ' '.join([context.incident_summary, *context.symptoms, *search_terms])[:500]
+        observation_signal = context.observation.signal_text if context.observation and context.observation.connection.value == 'connected' else ''
+        query = ' '.join([context.incident_summary, observation_signal, *context.symptoms, *search_terms])[:1000]
         limitations: list[str] = []
         runbooks: list = []
         history: list[dict[str, str]] = []

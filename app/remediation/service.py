@@ -42,9 +42,27 @@ class RemediationAgent:
     def __init__(self, mcp_client: RemediationToolClient):
         self.mcp_client = mcp_client
 
+    @classmethod
+    def _select_action(cls, context: RemediationContext) -> SafeAction | None:
+        for recommendation in sorted(context.recommended_actions, key=lambda item: item.rank):
+            text = recommendation.text.lower()
+            if 'rollback' in text:
+                return SafeAction.ROLLBACK_DEPLOYMENT
+            if 'restart' in text:
+                return SafeAction.RESTART_POD
+            if 'scale' in text:
+                return SafeAction.SCALE_DEPLOYMENT
+            if 'clear' in text and 'temporary' in text:
+                return SafeAction.CLEAR_TEMPORARY_CONDITION
+        return cls._actions.get(context.category)
+
     async def remediate(self, context: RemediationContext, *, enabled: bool) -> RemediationResult:
-        action = self._actions.get(context.category)
-        target = context.service or 'affected-service'
+        action = self._select_action(context)
+        target = (
+            f'{context.observation.namespace}/{context.observation.workload}'
+            if context.observation
+            else context.service or 'affected-service'
+        )
         if action is None:
             return RemediationResult(
                 status='disabled',
@@ -67,6 +85,14 @@ class RemediationAgent:
                     target=target,
                     message='The allowlisted action was not executed.',
                     retry_recommended=True,
+                )
+            if context.observation and context.observation.connection.value == 'connected' and execution.get('simulated'):
+                return RemediationResult(
+                    status='awaiting_approval',
+                    action=action,
+                    target=target,
+                    message='A simulated executor cannot change a connected cluster; no action was applied.',
+                    health_verified=False,
                 )
             verification = await self.mcp_client.verify_health(target)
             healthy = verification.get('status') == 'healthy'

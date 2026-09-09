@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.kubernetes.service import KubernetesService, KubernetesUnavailable
 from app.mcp.contracts import (
     ExecuteSafeActionInput,
     GetIncidentHistoryInput,
@@ -29,9 +30,15 @@ class MCPMalformedResponse(RuntimeError):
 
 
 class MCPToolServer:
-    def __init__(self, rag: RAGService, remediation_executor: RemediationToolClient | None = None):
+    def __init__(
+        self,
+        rag: RAGService,
+        remediation_executor: RemediationToolClient | None = None,
+        kubernetes: KubernetesService | None = None,
+    ):
         self.rag = rag
         self.remediation_executor = remediation_executor
+        self.kubernetes = kubernetes
 
     async def search_runbooks(self, query: str, limit: int = 3) -> dict[str, Any]:
         request = SearchRunbooksInput(query=query, limit=limit)
@@ -93,6 +100,37 @@ class MCPToolServer:
             'message': 'health check passed' if healthy else 'health check did not pass',
         }
 
+    async def get_service_observations(self, namespace: str, workload: str) -> dict[str, Any]:
+        if self.kubernetes is None:
+            return {'status': 'offline', 'message': 'Kubernetes observation is not configured'}
+        try:
+            observation = await self.kubernetes.observe(namespace, workload)
+        except KubernetesUnavailable as exc:
+            return {'status': 'offline', 'message': str(exc)}
+        return {
+            'status': observation.health.status.value if observation.connection.value == 'connected' else 'offline',
+            'observation': observation.model_dump(mode='json'),
+            'message': 'Kubernetes observation retrieved',
+        }
+
+    async def get_cluster_health(self, namespace: str, workload: str) -> dict[str, Any]:
+        return await self.get_service_observations(namespace, workload)
+
+    async def get_pod_status(self, namespace: str, workload: str) -> dict[str, Any]:
+        payload = await self.get_service_observations(namespace, workload)
+        observation = payload.get('observation') or {}
+        return {**payload, 'items': observation.get('pods', [])}
+
+    async def get_deployment_status(self, namespace: str, workload: str) -> dict[str, Any]:
+        payload = await self.get_service_observations(namespace, workload)
+        observation = payload.get('observation') or {}
+        return {**payload, 'item': observation.get('deployment')}
+
+    async def get_recent_events(self, namespace: str, workload: str) -> dict[str, Any]:
+        payload = await self.get_service_observations(namespace, workload)
+        observation = payload.get('observation') or {}
+        return {**payload, 'items': observation.get('events', [])}
+
     async def handle(self, message: dict[str, Any]) -> dict[str, Any]:
         request_id = message.get('id')
         method = message.get('method')
@@ -110,6 +148,11 @@ class MCPToolServer:
                 'tools': [
                     {'name': 'search_runbooks', 'description': 'Search bounded runbook evidence', 'inputSchema': {'type': 'object'}},
                     {'name': 'get_incident_history', 'description': 'Find bounded historical incidents', 'inputSchema': {'type': 'object'}},
+                    {'name': 'get_cluster_health', 'description': 'Read approved namespace workload health', 'inputSchema': {'type': 'object'}},
+                    {'name': 'get_service_observations', 'description': 'Read structured workload observations', 'inputSchema': {'type': 'object'}},
+                    {'name': 'get_pod_status', 'description': 'Read approved workload pod status', 'inputSchema': {'type': 'object'}},
+                    {'name': 'get_deployment_status', 'description': 'Read approved deployment status', 'inputSchema': {'type': 'object'}},
+                    {'name': 'get_recent_events', 'description': 'Read recent Kubernetes events for the workload', 'inputSchema': {'type': 'object'}},
                     {'name': 'execute_safe_action', 'description': 'Execute one policy-allowlisted remediation action', 'inputSchema': {'type': 'object'}},
                     {'name': 'verify_health', 'description': 'Verify health after a remediation action', 'inputSchema': {'type': 'object'}},
                 ]
@@ -122,6 +165,16 @@ class MCPToolServer:
                     payload = await self.search_runbooks(arguments.get('query', ''), arguments.get('limit', 3))
                 elif name == 'get_incident_history':
                     payload = await self.get_incident_history(arguments.get('service'), arguments.get('category', ''), arguments.get('limit', 3))
+                elif name == 'get_cluster_health':
+                    payload = await self.get_cluster_health(arguments.get('namespace', ''), arguments.get('workload', ''))
+                elif name == 'get_service_observations':
+                    payload = await self.get_service_observations(arguments.get('namespace', ''), arguments.get('workload', ''))
+                elif name == 'get_pod_status':
+                    payload = await self.get_pod_status(arguments.get('namespace', ''), arguments.get('workload', ''))
+                elif name == 'get_deployment_status':
+                    payload = await self.get_deployment_status(arguments.get('namespace', ''), arguments.get('workload', ''))
+                elif name == 'get_recent_events':
+                    payload = await self.get_recent_events(arguments.get('namespace', ''), arguments.get('workload', ''))
                 elif name == 'execute_safe_action':
                     payload = await self.execute_safe_action(arguments.get('action', ''), arguments.get('target', ''))
                 elif name == 'verify_health':
@@ -167,7 +220,7 @@ class MCPToolClient:
         if not isinstance(result, dict) or 'structuredContent' not in result:
             raise MCPMalformedResponse('MCP response did not contain structured content')
         payload = result['structuredContent']
-        if not isinstance(payload, dict) or payload.get('status') not in {'complete', 'no_evidence', 'unavailable', 'executed', 'failed', 'healthy', 'unhealthy'}:
+        if not isinstance(payload, dict) or payload.get('status') not in {'complete', 'no_evidence', 'unavailable', 'executed', 'failed', 'healthy', 'unhealthy', 'degraded', 'offline', 'unknown'}:
             raise MCPMalformedResponse('MCP structured content was invalid')
         return payload
 

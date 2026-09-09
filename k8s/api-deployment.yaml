@@ -13,6 +13,7 @@ spec:
       labels:
         app: opspilot-api
     spec:
+      serviceAccountName: opspilot-api
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true

@@ -23,6 +23,8 @@ class GuardrailService:
         if any(item.id not in allowed_ids for item in result.evidence):
             return GuardrailDecision(accepted=False, limitation='result referenced evidence outside the selected bundle')
         for action in result.recommended_actions:
+            if any(identifier not in allowed_ids for identifier in action.evidence_ids):
+                return GuardrailDecision(accepted=False, limitation='recommendation referenced evidence outside the selected bundle')
             if any(re.search(pattern, action.text, re.IGNORECASE) for pattern in self.unsafe_patterns):
                 return GuardrailDecision(accepted=False, limitation='recommendation contained a destructive command')
             if not action.requires_confirmation:

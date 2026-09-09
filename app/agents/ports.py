@@ -7,6 +7,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.kubernetes.contracts import ClusterObservation
 from app.models.schemas import AnalysisResult, EvidenceItem, Incident, Severity
 
 
@@ -14,6 +15,7 @@ class TriageContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     incident_description: str = Field(min_length=1, max_length=4000)
+    observation: ClusterObservation | None = None
 
 
 class TriageResult(BaseModel):
@@ -29,6 +31,7 @@ class TriageResult(BaseModel):
     confidence: float = Field(ge=0, le=1)
     classifier_source: str = "rule_fallback"
     limitations: list[str] = Field(default_factory=list, max_length=5)
+    observation_ids: list[str] = Field(default_factory=list, max_length=5)
 
 
 class KnowledgeContext(BaseModel):
@@ -39,6 +42,7 @@ class KnowledgeContext(BaseModel):
     category: str = Field(min_length=1, max_length=80)
     symptoms: list[str] = Field(default_factory=list, max_length=8)
     search_terms: list[str] = Field(default_factory=list, max_length=10)
+    observation: ClusterObservation | None = None
 
 
 class EvidenceBundle(BaseModel):
@@ -58,6 +62,7 @@ class ResolutionContext(BaseModel):
     incident_summary: str = Field(min_length=1, max_length=500)
     triage: TriageResult
     evidence: EvidenceBundle
+    observation: ClusterObservation | None = None
     safety_constraints: tuple[str, ...] = ("Never execute commands", "Require operator confirmation")
 
 

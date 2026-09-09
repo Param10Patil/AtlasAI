@@ -10,6 +10,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.kubernetes.contracts import ClusterObservation
+
 
 class Severity(str, Enum):
     LOW = "low"
@@ -26,6 +28,8 @@ class Incident(BaseModel):
     service: str | None = Field(default=None, max_length=80)
     category: str | None = Field(default=None, max_length=80)
     severity: Severity | None = None
+    source: str = Field(default="manual", max_length=40)
+    observation: ClusterObservation | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("description")
@@ -53,6 +57,7 @@ class RecommendedAction(BaseModel):
     rank: int = Field(default=1, ge=1, le=5)
     text: str = Field(min_length=1, max_length=500)
     requires_confirmation: bool = True
+    evidence_ids: list[str] = Field(default_factory=list, max_length=5)
 
 
 class AnalysisResult(BaseModel):

@@ -30,6 +30,7 @@ class WorkflowDetails:
     safety: tuple[dict[str, str], ...]
     remediation: dict[str, Any]
     degraded: bool
+    observation: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -63,7 +64,7 @@ class InvestigationWorkflow:
         builder = StateGraph(WorkflowState)
 
         async def triage_node(state: dict[str, Any]) -> dict[str, Any]:
-            context = TriageContext(incident_description=state['original_incident'])
+            context = TriageContext(incident_description=state['original_incident'], observation=state.get('observation'))
             return {'triage_result': await self.triage_agent.triage(context)}
 
         async def knowledge_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -74,6 +75,7 @@ class InvestigationWorkflow:
                 category=triage.category,
                 symptoms=triage.symptoms,
                 search_terms=triage.search_terms,
+                observation=state.get('observation'),
             )
             return {'evidence': await self.knowledge_agent.investigate(context)}
 
@@ -83,6 +85,7 @@ class InvestigationWorkflow:
                 incident_summary=triage.incident_summary,
                 triage=triage,
                 evidence=state['evidence'],
+                observation=state.get('observation'),
             )
             return {'resolution': await self.resolution_agent.resolve(context)}
 
@@ -111,6 +114,8 @@ class InvestigationWorkflow:
                 category=triage.category,
                 probable_causes=tuple(triage.likely_causes),
                 evidence_ids=tuple(item.id for item in evidence.runbook_evidence),
+                recommended_actions=tuple(decision.result.recommended_actions) if decision.result else (),
+                observation=state.get('observation'),
             )
             return {
                 'remediation': await self.remediation_agent.remediate(context, enabled=self.remediation_enabled),
@@ -144,21 +149,25 @@ class InvestigationWorkflow:
     async def analyze(self, incident: Incident) -> WorkflowOutput:
         await self.repository.save_incident(incident)
         state: dict[str, Any] = {'original_incident': incident.description}
+        if incident.observation:
+            state['observation'] = incident.observation
         if self.graph is not None:
             state.update(await self.graph.ainvoke(state))
         else:
-            triage = await self.triage_agent.triage(TriageContext(incident_description=incident.description))
+            triage = await self.triage_agent.triage(TriageContext(incident_description=incident.description, observation=incident.observation))
             knowledge = await self.knowledge_agent.investigate(KnowledgeContext(
                 incident_summary=triage.incident_summary,
                 service=triage.service,
                 category=triage.category,
                 symptoms=triage.symptoms,
                 search_terms=triage.search_terms,
+                observation=incident.observation,
             ))
             resolution = await self.resolution_agent.resolve(ResolutionContext(
                 incident_summary=triage.incident_summary,
                 triage=triage,
                 evidence=knowledge,
+                observation=incident.observation,
             ))
             evidence_ids = tuple(item.id for item in knowledge.runbook_evidence)
             state.update({'triage_result': triage, 'evidence': knowledge, 'resolution': resolution})
@@ -173,6 +182,8 @@ class InvestigationWorkflow:
                     category=triage.category,
                     probable_causes=tuple(triage.likely_causes),
                     evidence_ids=tuple(item.id for item in knowledge.runbook_evidence),
+                    recommended_actions=tuple(state['guardrail_decision'].result.recommended_actions) if state['guardrail_decision'].result else (),
+                    observation=incident.observation,
                 )
                 state['remediation'] = await self.remediation_agent.remediate(context, enabled=self.remediation_enabled)
             else:
@@ -213,6 +224,7 @@ class InvestigationWorkflow:
             safety=( {'name': 'schema_validation', 'status': 'passed' if decision.accepted else 'limited'}, ),
             remediation=remediation.model_dump(mode='json'),
             degraded=bool(result.limitations),
+            observation=state['observation'].model_dump(mode='json') if state.get('observation') else {},
         )
         return WorkflowOutput(result, details)
 

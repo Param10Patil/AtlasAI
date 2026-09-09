@@ -4,6 +4,9 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.kubernetes.contracts import ClusterObservation
+from app.models.schemas import RecommendedAction
+
 
 class SafeAction(str, Enum):
     RESTART_POD = 'restart_pod'
@@ -20,6 +23,8 @@ class RemediationContext(BaseModel):
     category: str = Field(min_length=1, max_length=80)
     probable_causes: tuple[str, ...] = ()
     evidence_ids: tuple[str, ...] = ()
+    recommended_actions: tuple[RecommendedAction, ...] = ()
+    observation: ClusterObservation | None = None
     safety_constraints: tuple[str, ...] = ('Allow only the four safe actions', 'Verify health after execution')
 
 

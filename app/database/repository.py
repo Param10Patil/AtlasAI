@@ -49,6 +49,7 @@ class JobSnapshot:
     lease_expires_at: datetime | None = None
     error_code: str | None = None
     result_payload: dict[str, Any] | None = None
+    incident_payload: dict[str, Any] | None = None
 
 
 class RepositoryError(RuntimeError):
@@ -200,6 +201,7 @@ class PostgresRepository:
             created_at=row[4], started_at=row[5], completed_at=row[6],
             cancel_requested=bool(row[7]), attempt_count=int(row[8]), lease_owner=row[9],
             lease_expires_at=row[10], error_code=row[11], result_payload=row[12] or None,
+            incident_payload=row[13] or None,
         )
 
     async def save_result(self, result: AnalysisResult) -> None:
@@ -321,11 +323,17 @@ def seed_records(knowledge_dir: Path) -> tuple[list[KnowledgeRecord], list[Histo
 
 
 class _PostgresQueueMethods:
-    async def create_job(self, description: str, client_request_id: UUID | None, capacity: int) -> tuple[JobSnapshot, bool]:
+    async def create_job(
+        self,
+        description: str,
+        client_request_id: UUID | None,
+        capacity: int,
+        incident_payload: dict[str, Any] | None = None,
+    ) -> tuple[JobSnapshot, bool]:
         def write() -> tuple[JobSnapshot, bool]:
             connection = self._connect()
             with connection.cursor() as cursor:
-                cursor.execute('select id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload from analysis_jobs where client_request_id = %s', (client_request_id,))
+                cursor.execute('select id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload, incident_payload from analysis_jobs where client_request_id = %s', (client_request_id,))
                 existing = cursor.fetchone()
                 if existing:
                     connection.commit()
@@ -336,15 +344,19 @@ class _PostgresQueueMethods:
                     raise RepositoryError('QUEUE_FULL')
                 now = datetime.now(timezone.utc)
                 job_id = uuid4()
-                cursor.execute('insert into analysis_jobs (id, client_request_id, description, status, created_at) values (%s, %s, %s, %s, %s)', (job_id, client_request_id, description, 'queued', now))
+                cursor.execute(
+                    'insert into analysis_jobs (id, client_request_id, description, status, created_at, incident_payload) '
+                    'values (%s, %s, %s, %s, %s, %s)',
+                    (job_id, client_request_id, description, 'queued', now, json.dumps(incident_payload) if incident_payload else None),
+                )
                 connection.commit()
-                return JobSnapshot(job_id, client_request_id, description, 'queued', now), True
+                return JobSnapshot(job_id, client_request_id, description, 'queued', now, incident_payload=incident_payload), True
         return await asyncio.to_thread(write)
 
     async def get_job(self, job_id: UUID) -> JobSnapshot | None:
         def read() -> JobSnapshot | None:
             with self._connect().cursor() as cursor:
-                cursor.execute('select id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload from analysis_jobs where id = %s', (job_id,))
+                cursor.execute('select id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload, incident_payload from analysis_jobs where id = %s', (job_id,))
                 row = cursor.fetchone()
                 return self._job(row) if row else None
         return await asyncio.to_thread(read)
@@ -358,7 +370,7 @@ class _PostgresQueueMethods:
                 cursor.execute(
                     'update analysis_jobs set status = %s, started_at = coalesce(started_at, now()), attempt_count = attempt_count + 1, lease_owner = %s, lease_expires_at = now() + make_interval(secs => %s) '
                     'where id = (select id from analysis_jobs where status = %s and cancel_requested = false and not exists (select 1 from analysis_jobs where status = %s) order by created_at, id for update skip locked limit 1) '
-                    'returning id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload',
+                    'returning id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload, incident_payload',
                     ('running', lease_owner, lease_seconds, 'queued', 'running'),
                 )
                 row = cursor.fetchone()
@@ -398,7 +410,7 @@ class _PostgresQueueMethods:
             with connection.cursor() as cursor:
                 cursor.execute('update analysis_jobs set status = %s, completed_at = now(), cancel_requested = true, lease_owner = null, lease_expires_at = null where id = %s and status = %s', ('cancelled', job_id, 'queued'))
                 cursor.execute('update analysis_jobs set cancel_requested = true where id = %s and status = %s', (job_id, 'running'))
-                cursor.execute('select id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload from analysis_jobs where id = %s', (job_id,))
+                cursor.execute('select id, client_request_id, description, status, created_at, started_at, completed_at, cancel_requested, attempt_count, lease_owner, lease_expires_at, error_code, result_payload, incident_payload from analysis_jobs where id = %s', (job_id,))
                 row = cursor.fetchone()
                 connection.commit()
                 return self._job(row) if row else None

@@ -59,6 +59,8 @@ class ResolutionAgent:
             item for item in context.evidence.runbook_evidence
             if not requested_ids or item.id in requested_ids
         ]
+        if any(identifier not in allowed_ids for action in actions for identifier in action.evidence_ids):
+            raise ValueError('resolution action referenced evidence outside the selected bundle')
         return AnalysisResult(
             severity=payload['severity'],
             title=payload['title'],
@@ -75,7 +77,7 @@ class ResolutionAgent:
             severity=context.triage.severity,
             title=f'{context.triage.service or "Service"} incident requires review',
             likely_causes=context.triage.likely_causes[:5],
-            recommended_actions=[RecommendedAction(text='Collect more evidence and review the incident with an operator before changing production.', requires_confirmation=True)],
+            recommended_actions=[RecommendedAction(text='Collect more evidence and review the incident with an operator before changing production.', requires_confirmation=True, evidence_ids=[item.id for item in context.evidence.runbook_evidence])],
             confidence=min(context.triage.confidence, 0.45),
             evidence=context.evidence.runbook_evidence,
             limitations=list(dict.fromkeys(limitations))[:5],

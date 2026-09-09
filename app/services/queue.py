@@ -35,6 +35,7 @@ class JobRecord:
     job_id: UUID
     client_request_id: UUID | None
     description: str
+    incident: Incident | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = 'queued'
     result: WorkflowOutput | None = None
@@ -52,7 +53,7 @@ class InMemoryJobStore:
         self._order: deque[UUID] = deque()
         self._lock = asyncio.Lock()
 
-    async def create(self, description: str, client_request_id: UUID | None) -> tuple[JobRecord, bool]:
+    async def create(self, description: str, client_request_id: UUID | None, incident: Incident | None = None) -> tuple[JobRecord, bool]:
         async with self._lock:
             if client_request_id is not None:
                 for existing in self._jobs.values():
@@ -61,7 +62,7 @@ class InMemoryJobStore:
             load = sum(item.status in {'queued', 'running'} for item in self._jobs.values())
             if load >= 1 + self.queue_capacity:
                 raise QueueFullError
-            record = JobRecord(uuid4(), client_request_id, description)
+            record = JobRecord(uuid4(), client_request_id, description, incident)
             self._jobs[record.job_id] = record
             self._order.append(record.job_id)
             self._emit_locked(record, 'queued', position=load)
@@ -142,7 +143,7 @@ def _output_payload(output: WorkflowOutput) -> dict[str, Any]:
             'steps': list(details.steps), 'knowledge': details.knowledge,
             'tools': list(details.tools), 'models': details.models,
             'safety': list(details.safety), 'remediation': details.remediation,
-            'degraded': details.degraded,
+            'degraded': details.degraded, 'observation': details.observation,
         },
     }
 
@@ -160,6 +161,7 @@ def _output_from_payload(payload: dict[str, Any]) -> WorkflowOutput:
             safety=tuple(payload['details'].get('safety', ())),
             remediation=dict(payload['details'].get('remediation', {})),
             degraded=bool(payload['details'].get('degraded', False)),
+            observation=dict(payload['details'].get('observation', {})),
         ),
     )
 
@@ -175,7 +177,13 @@ class PostgresJobStore:
 
     @staticmethod
     def _record(snapshot: JobSnapshot) -> JobRecord:
-        record = JobRecord(snapshot.id, snapshot.client_request_id, snapshot.description, snapshot.created_at)
+        incident = None
+        if snapshot.incident_payload:
+            try:
+                incident = Incident.model_validate(snapshot.incident_payload)
+            except Exception:  # noqa: BLE001 - persisted context fails closed
+                incident = None
+        record = JobRecord(snapshot.id, snapshot.client_request_id, snapshot.description, incident, snapshot.created_at)
         record.status = snapshot.status
         record.cancel_requested = snapshot.cancel_requested
         record.error_code = snapshot.error_code
@@ -183,9 +191,10 @@ class PostgresJobStore:
             record.result = _output_from_payload(snapshot.result_payload)
         return record
 
-    async def create(self, description: str, client_request_id: UUID | None) -> tuple[JobRecord, bool]:
+    async def create(self, description: str, client_request_id: UUID | None, incident: Incident | None = None) -> tuple[JobRecord, bool]:
         try:
-            snapshot, created = await self.repository.create_job(description, client_request_id, self.queue_capacity)
+            payload = incident.model_dump(mode='json') if incident else None
+            snapshot, created = await self.repository.create_job(description, client_request_id, self.queue_capacity, payload)
         except RepositoryError as exc:
             if str(exc) == 'QUEUE_FULL':
                 raise QueueFullError from exc
@@ -280,8 +289,8 @@ class AnalysisCoordinator:
         self._drain_task: asyncio.Task[None] | None = None
         self._running_tasks: dict[UUID, asyncio.Task[None]] = {}
 
-    async def submit(self, description: str, client_request_id: UUID | None = None) -> tuple[JobRecord, bool]:
-        record, created = await self.store.create(description, client_request_id)
+    async def submit(self, description: str, client_request_id: UUID | None = None, incident: Incident | None = None) -> tuple[JobRecord, bool]:
+        record, created = await self.store.create(description, client_request_id, incident)
         if created:
             self._ensure_drain()
         return record, created
@@ -366,7 +375,7 @@ class AnalysisCoordinator:
         lease_task = asyncio.create_task(self._refresh_lease(record)) if hasattr(self.store, 'refresh') else None
         try:
             output = await asyncio.wait_for(
-                self.workflow.analyze(Incident(description=record.description)),
+                self.workflow.analyze(record.incident or Incident(description=record.description)),
                 timeout=self.timeout_seconds,
             )
             if record.cancel_requested:

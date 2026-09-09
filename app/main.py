@@ -1,5 +1,6 @@
 '''FastAPI application boundary for OpsPilot.'''
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,6 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app import __version__
 from app.agents.ports import KnowledgeContext, ResolutionContext, TriageContext
 from app.database.repository import PostgresRepository
+from app.kubernetes.detection import IncidentDetector
+from app.kubernetes.service import KubernetesUnavailable
+from app.models.schemas import Incident
 from app.services.queue import (
     AnalysisCoordinator,
     JobNotFoundError,
@@ -50,6 +54,12 @@ class MCPJsonRpcRequest(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
+class SimulationRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    scenario: str = Field(pattern=r'^(deployment_failure|pod_crash|rollout_failure)$')
+
+
 def _public_payload(output: Any) -> dict[str, Any]:
     result = output.result
     details = output.details
@@ -73,6 +83,7 @@ def _public_payload(output: Any) -> dict[str, Any]:
             'safety': list(details.safety),
             'remediation': details.remediation,
             'degraded': details.degraded,
+            'observation': details.observation,
         },
     }
 
@@ -121,9 +132,76 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         if not current.ready:
             return JSONResponse(
                 status_code=503,
-                content={'status': 'not_ready', 'message': current.readiness_message, 'optional': {'mlflow': 'ignored', 'lora': 'optional'}},
+                content={'status': 'not_ready', 'message': current.readiness_message, 'optional': {'mlflow': 'ignored', 'lora': 'optional', 'kubernetes': 'offline'}},
             )
-        return {'status': 'ready', 'message': current.readiness_message, 'optional': {'mlflow': 'ignored', 'lora': 'available' if current.workflow.triage_agent.classifier.__class__.__name__ == 'LoRAClassifier' else 'fallback'}}
+        kubernetes_status = current.kubernetes.connection.value if current.kubernetes else 'offline'
+        return {'status': 'ready', 'message': current.readiness_message, 'optional': {'mlflow': 'ignored', 'lora': 'available' if current.workflow.triage_agent.classifier.__class__.__name__ == 'LoRAClassifier' else 'fallback', 'kubernetes': kubernetes_status}}
+
+    @app.get('/api/cluster/summary')
+    async def cluster_summary(request: Request) -> dict[str, Any]:
+        current: ApplicationRuntime = request.app.state.runtime
+        kubernetes = current.kubernetes
+        if kubernetes is None or not kubernetes.configured:
+            return JSONResponse(status_code=503, content={'status': 'offline', 'message': 'Kubernetes integration is disabled.'})
+        summary = await kubernetes.summary(kubernetes.namespace)
+        return summary.model_dump(mode='json')
+
+    @app.get('/api/cluster/observations')
+    async def cluster_observations(request: Request) -> dict[str, Any]:
+        current: ApplicationRuntime = request.app.state.runtime
+        kubernetes = current.kubernetes
+        if kubernetes is None or not kubernetes.configured:
+            return JSONResponse(status_code=503, content={'status': 'offline', 'message': 'Kubernetes integration is disabled.'})
+        observation = await kubernetes.observe(kubernetes.namespace, kubernetes.workload)
+        status_code = 200 if observation.connection.value == 'connected' else 503
+        return JSONResponse(status_code=status_code, content=observation.model_dump(mode='json'))
+
+    async def _detected_job(request: Request, incident: Incident, event: Any) -> dict[str, Any] | JSONResponse:
+        try:
+            record, _ = await request.app.state.coordinator.submit(incident.description, incident.id, incident)
+        except QueueFullError:
+            return JSONResponse(status_code=429, content={'error': {'code': 'QUEUE_FULL', 'message': 'One investigation is running and the bounded queue is full.', 'retryable': True}})
+        status = await request.app.state.coordinator.public_status(record)
+        status['incident'] = event.model_dump(mode='json')
+        return status
+
+    @app.post('/api/cluster/detect', response_model=None)
+    async def detect_cluster_incident(request: Request) -> dict[str, Any] | JSONResponse:
+        current: ApplicationRuntime = request.app.state.runtime
+        kubernetes = current.kubernetes
+        if kubernetes is None or not kubernetes.configured:
+            return JSONResponse(status_code=503, content={'status': 'offline', 'message': 'Kubernetes integration is disabled.'})
+        observation = await kubernetes.observe(kubernetes.namespace, kubernetes.workload)
+        if observation.connection.value != 'connected':
+            return JSONResponse(status_code=503, content=observation.model_dump(mode='json'))
+        event = IncidentDetector().detect(observation)
+        if event is None:
+            return {'status': 'healthy', 'observation': observation.model_dump(mode='json')}
+        incident = Incident(description=event.description, source='kubernetes', service=event.workload, observation=observation)
+        return await _detected_job(request, incident, event)
+
+    @app.post('/api/cluster/simulations/inject', status_code=202, response_model=None)
+    async def inject_cluster_incident(payload: SimulationRequest, request: Request) -> dict[str, Any] | JSONResponse:
+        current: ApplicationRuntime = request.app.state.runtime
+        kubernetes = current.kubernetes
+        if kubernetes is None or not kubernetes.configured:
+            return JSONResponse(status_code=503, content={'status': 'offline', 'message': 'Connect the approved ops-demo cluster and enable Kubernetes execution mode.'})
+        if kubernetes.mode != 'execute':
+            return JSONResponse(status_code=403, content={'status': 'blocked', 'message': 'Incident injection requires Kubernetes execution mode.'})
+        try:
+            observation = await kubernetes.inject_failure(payload.scenario)
+        except KubernetesUnavailable as exc:
+            return JSONResponse(status_code=503, content={'status': 'unavailable', 'message': str(exc)})
+        for _ in range(12):
+            if observation.health.status.value == 'degraded':
+                break
+            await asyncio.sleep(0.5)
+            observation = await kubernetes.observe(kubernetes.namespace, kubernetes.workload)
+        event = IncidentDetector().detect(observation)
+        if event is None:
+            return JSONResponse(status_code=409, content={'status': 'injection_pending', 'message': 'The cluster accepted the controlled change but has not reported a health violation yet.', 'observation': observation.model_dump(mode='json')})
+        incident = Incident(description=event.description, source='kubernetes', service=event.workload, observation=observation)
+        return await _detected_job(request, incident, event)
 
     @app.post('/api/incidents/analyze')
     async def analyze(payload: AnalyzeRequest, request: Request) -> dict[str, Any]:

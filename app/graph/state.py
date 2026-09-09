@@ -9,6 +9,7 @@ from uuid import UUID
 
 from app.agents.ports import EvidenceBundle, TriageResult
 from app.guardrails.contracts import GuardrailDecision
+from app.kubernetes.contracts import ClusterObservation
 from app.models.schemas import AnalysisResult
 from app.remediation.contracts import RemediationResult
 
@@ -16,6 +17,7 @@ from app.remediation.contracts import RemediationResult
 class WorkflowState(TypedDict, total=False):
     request_id: UUID
     original_incident: str
+    observation: ClusterObservation
     triage_result: TriageResult
     evidence: EvidenceBundle
     resolution: AnalysisResult

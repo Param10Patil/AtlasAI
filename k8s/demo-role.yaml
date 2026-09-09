@@ -1,0 +1,26 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: opspilot-demo-operator
+  namespace: ops-demo
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: opspilot-demo-operator
+  namespace: ops-demo
+subjects:
+  - kind: ServiceAccount
+    name: opspilot-api
+    namespace: opspilot
+roleRef:
+  kind: Role
+  name: opspilot-demo-operator
+  apiGroup: rbac.authorization.k8s.io
