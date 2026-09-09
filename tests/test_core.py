@@ -185,6 +185,27 @@ async def test_remediation_is_allowlisted_mcp_mediated_and_health_verified():
 
 
 @pytest.mark.asyncio
+async def test_deployment_failure_policy_overrides_stale_restart_recommendation():
+    repository = await build_seed_repository()
+    executor = SimulatedActionExecutor()
+    client = MCPToolClient(server=MCPToolServer(RAGService(repository), remediation_executor=executor))
+    result = await RemediationAgent(client).remediate(
+        RemediationContext(
+            incident_summary='release template is unhealthy while an old pod still reports restarts',
+            service='checkout-api',
+            category='deployment_failure',
+            recommended_actions=[
+                RecommendedAction(text='Restart the affected workload pod.', rank=1, requires_confirmation=True),
+                RecommendedAction(text='Rollback the approved deployment.', rank=2, requires_confirmation=True),
+            ],
+        ),
+        enabled=True,
+    )
+    assert result.status == 'verified'
+    assert executor.executions == [('rollback_deployment', 'checkout-api')]
+
+
+@pytest.mark.asyncio
 async def test_mcp_rejects_non_allowlisted_remediation_action():
     repository = await build_seed_repository()
     server = MCPToolServer(RAGService(repository), remediation_executor=SimulatedActionExecutor())

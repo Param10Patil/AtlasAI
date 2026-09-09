@@ -45,6 +45,14 @@ class RemediationAgent:
 
     @classmethod
     def _select_action(cls, context: RemediationContext) -> SafeAction | None:
+        # A deployment failure is a release-level regression. Prefer the
+        # recorded last-known-good revision even when stale pod restart events
+        # make a restart appear first in a ranked textual plan. This keeps the
+        # category policy authoritative and avoids restarting a pod onto the
+        # same broken template.
+        category_action = cls._actions.get(context.category)
+        if context.category == 'deployment_failure':
+            return category_action
         for recommendation in sorted(context.recommended_actions, key=lambda item: item.rank):
             text = recommendation.text.lower()
             if 'rollback' in text:
@@ -55,7 +63,7 @@ class RemediationAgent:
                 return SafeAction.SCALE_DEPLOYMENT
             if 'clear' in text and 'temporary' in text:
                 return SafeAction.CLEAR_TEMPORARY_CONDITION
-        return cls._actions.get(context.category)
+        return category_action
 
     async def remediate(self, context: RemediationContext, *, enabled: bool) -> RemediationResult:
         action = self._select_action(context)
