@@ -133,6 +133,18 @@ MLflow is intentionally optional to keep the normal Colab install small. If
 you want local tracking, install it after the successful training dependency
 install with `!/content/atlasai-py311/bin/python -m pip install -r training/requirements-mlflow.txt`.
 
+For the larger-data quality gate, generate the reproducible v2 corpus and run
+cross-validation before training:
+
+```python
+!/content/atlasai-py311/bin/python training/dataset/build_v2.py
+!/content/atlasai-py311/bin/python training/cross_validate.py --dataset training/dataset/incidents-v2.jsonl --output /content/opspilot-cross-validation.json
+```
+
+Only after inspecting that report should you train the adapter with
+`--dataset training/dataset/incidents-v2.jsonl`; the resulting artifact must
+be evaluated against that same dataset checksum.
+
 This is sequence classification, so autoregressive generation, sampling,
 temperature, top-k/top-p, greedy decoding, KV cache, and continuous batching
 are not used by this model. The API performs single-request sequence

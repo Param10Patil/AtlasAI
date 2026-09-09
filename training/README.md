@@ -20,7 +20,16 @@ For a local run from the repository root:
 $env:HF_HOME = 'E:\\AtlasAI-hf-cache'
 python training/train_lora.py --mode both --run-overfit-test --epochs 30 --batch-size 8 --early-stopping-patience 8 --output-dir E:\\AtlasAI-training-runs\\comparison
 python training/evaluate.py E:\\AtlasAI-training-runs\\comparison\\lora --dataset training/dataset/incidents.jsonl
+python training/dataset/build_v2.py
+python training/cross_validate.py --dataset training/dataset/incidents-v2.jsonl --output E:\\AtlasAI-training-runs\\cross-validation.json
 ```
+
+The v2 command creates a balanced 180-row corpus and the cross-validation
+command fits a tiny token/bigram Naive Bayes baseline independently inside
+each fold. It catches vocabulary leakage and measures dataset separability
+quickly; it does not replace the LoRA holdout evaluation. For a larger LoRA
+run, pass `--dataset training/dataset/incidents-v2.jsonl` to `train_lora.py`
+and record the new checksum in the artifact metadata.
 
 Install `training/requirements-mlflow.txt` only when local MLflow tracking is
 needed; it layers on top of the core training requirements. The generated

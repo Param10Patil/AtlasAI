@@ -12,6 +12,11 @@ training/artifacts/
 mlruns/
 docs/
 
+# Generated quality-gate corpora and reports
+training/dataset/incidents-v2.jsonl
+training/dataset/*-cross-validation.json
+training/reports/
+
 # Local model exports (never commit downloaded weights)
 opspilot-lora.zip
 opspilot-lora/
