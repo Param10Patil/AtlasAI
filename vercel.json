@@ -3,5 +3,11 @@
   "installCommand": "npm --prefix frontend ci",
   "buildCommand": "npm --prefix frontend run build",
   "outputDirectory": "static",
-  "cleanUrls": true
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/static/:path*",
+      "destination": "/:path*"
+    }
+  ]
 }
