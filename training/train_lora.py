@@ -396,7 +396,7 @@ def train(
     max_length: int = 128,
     *,
     mode: str = 'lora',
-    early_stopping_patience: int = 2,
+    early_stopping_patience: int = 8,
     run_overfit: bool = False,
 ) -> dict[str, Any]:
     try:
@@ -590,7 +590,7 @@ def main() -> int:
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--validation-fraction', type=float, default=0.2)
     parser.add_argument('--max-length', type=int, default=128)
-    parser.add_argument('--early-stopping-patience', type=int, default=2)
+    parser.add_argument('--early-stopping-patience', type=int, default=8)
     parser.add_argument('--run-overfit-test', action='store_true')
     parser.add_argument('--tracking-uri', default=None)
     args = parser.parse_args()
@@ -600,10 +600,11 @@ def main() -> int:
     results: dict[str, Any] = {}
     try:
         for mode in modes:
-            # Keep the defaults conservative for a tiny six-class dataset:
-            # LoRA adapts quickly, while full fine-tuning needs a smaller
-            # step to avoid wiping out the pretrained representation.
-            default_learning_rate = 5e-5 if mode == 'lora' else 2e-5
+            # These are the measured defaults for the tiny six-class corpus:
+            # LoRA uses 5e-4 and full fine-tuning uses 2e-4. Early stopping
+            # protects the held-out macro-F1 while allowing the adapter to
+            # reach its useful plateau.
+            default_learning_rate = 5e-4 if mode == 'lora' else 2e-4
             learning_rate = args.learning_rate if args.learning_rate is not None else default_learning_rate
             output_dir = args.output_dir / mode if args.mode == 'both' else args.output_dir
             results[mode] = train(args.dataset, output_dir, args.base_model, args.epochs, args.batch_size, learning_rate, args.tracking_uri, args.seed, args.validation_fraction, args.max_length, mode=mode, early_stopping_patience=args.early_stopping_patience, run_overfit=args.run_overfit_test)

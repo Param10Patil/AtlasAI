@@ -18,7 +18,7 @@ For a local run from the repository root:
 
 ```powershell
 $env:HF_HOME = 'E:\\AtlasAI-hf-cache'
-python training/train_lora.py --mode both --run-overfit-test --epochs 8 --batch-size 8 --output-dir E:\\AtlasAI-training-runs\\comparison
+python training/train_lora.py --mode both --run-overfit-test --epochs 30 --batch-size 8 --early-stopping-patience 8 --output-dir E:\\AtlasAI-training-runs\\comparison
 python training/evaluate.py E:\\AtlasAI-training-runs\\comparison\\lora --dataset training/dataset/incidents.jsonl
 ```
 
@@ -26,4 +26,5 @@ Install `training/requirements-mlflow.txt` only when local MLflow tracking is
 needed; it layers on top of the core training requirements. The generated
 weights stay outside Git. Install only a reviewed adapter and
 set `OPSPILOT_LORA_ADAPTER_PATH`; runtime startup validates its label map,
-dataset/model checksums, and manifest before importing Transformers.
+metrics, model checksum, and manifest before importing Transformers. The
+offline evaluator additionally checks the canonical dataset checksum.

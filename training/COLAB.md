@@ -52,7 +52,9 @@ token in a notebook. A free GPU is optional: `prajjwal1/bert-tiny` and the
 !/content/atlasai-py311/bin/python training/train_lora.py --dataset training/dataset/incidents.jsonl --output-dir training/artifacts/opspilot-comparison --base-model prajjwal1/bert-tiny --mode both --run-overfit-test --epochs 8 --batch-size 8 --validation-fraction 0.2 --max-length 128 --seed 42
 ```
 
-The default learning rates are 5e-5 for LoRA and 2e-5 for the full baseline.
+The default learning rates are 5e-4 for LoRA and 2e-4 for the full baseline;
+early stopping patience defaults to 8. These values reproduce the measured
+adapter run below; they are not a promise of production accuracy.
 The seed creates 96 training and 24 validation rows (four per label). The
 command prints trainable-parameter counts, accuracy, macro-F1, per-class
 precision/recall/F1, a confusion matrix, and a 12-row overfit diagnostic.
