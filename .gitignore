@@ -17,6 +17,13 @@ training/dataset/incidents-v2.jsonl
 training/dataset/*-cross-validation.json
 training/reports/
 
+# Temporary local verification files
+_kubeconfig.yaml
+_localdeps/
+_localdeps2/
+_wheelcache/
+opspilot-verification.tar
+
 # Local model exports (never commit downloaded weights)
 opspilot-lora.zip
 opspilot-lora/
