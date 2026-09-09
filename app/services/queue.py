@@ -144,7 +144,7 @@ def _output_payload(output: WorkflowOutput) -> dict[str, Any]:
             'tools': list(details.tools), 'models': details.models,
             'safety': list(details.safety), 'remediation': details.remediation,
             'degraded': details.degraded, 'observation': details.observation,
-            'incident_id': details.incident_id,
+            'incident_id': details.incident_id, 'baseline_observation': details.baseline_observation,
         },
     }
 
@@ -164,6 +164,7 @@ def _output_from_payload(payload: dict[str, Any]) -> WorkflowOutput:
             degraded=bool(payload['details'].get('degraded', False)),
             observation=dict(payload['details'].get('observation', {})),
             incident_id=str(payload['details'].get('incident_id', 'unknown')),
+            baseline_observation=dict(payload['details'].get('baseline_observation', {})),
         ),
     )
 

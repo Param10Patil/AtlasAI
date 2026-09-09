@@ -85,6 +85,7 @@ def _public_payload(output: Any) -> dict[str, Any]:
             'remediation': details.remediation,
             'degraded': details.degraded,
             'observation': details.observation,
+            'baseline_observation': details.baseline_observation,
             'incident_id': details.incident_id,
         },
     }
@@ -165,6 +166,8 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
             return JSONResponse(status_code=429, content={'error': {'code': 'QUEUE_FULL', 'message': 'One investigation is running and the bounded queue is full.', 'retryable': True}})
         status = await request.app.state.coordinator.public_status(record)
         status['incident'] = event.model_dump(mode='json')
+        if incident.baseline_observation is not None:
+            status['incident']['baseline_observation'] = incident.baseline_observation.model_dump(mode='json')
         return status
 
     @app.post('/api/cluster/detect', response_model=None)
@@ -191,6 +194,9 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         if kubernetes.mode != 'execute':
             return JSONResponse(status_code=403, content={'status': 'blocked', 'message': 'Incident injection requires Kubernetes execution mode.'})
         try:
+            baseline = await kubernetes.observe(kubernetes.namespace, kubernetes.workload)
+            if baseline.connection.value != 'connected':
+                return JSONResponse(status_code=503, content={'status': 'unavailable', 'message': 'Kubernetes state could not be captured before injection.', 'observation': baseline.model_dump(mode='json')})
             observation = await kubernetes.inject_failure(payload.scenario)
         except KubernetesUnavailable as exc:
             return JSONResponse(status_code=503, content={'status': 'unavailable', 'message': str(exc)})
@@ -202,7 +208,14 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         event = IncidentDetector().detect(observation)
         if event is None:
             return JSONResponse(status_code=409, content={'status': 'injection_pending', 'message': 'The cluster accepted the controlled change but has not reported a health violation yet.', 'observation': observation.model_dump(mode='json')})
-        incident = Incident(description=event.description, source='kubernetes', service=event.workload, observation=observation, remediation_requested=payload.auto_remediate)
+        incident = Incident(
+            description=event.description,
+            source='kubernetes',
+            service=event.workload,
+            observation=observation,
+            baseline_observation=baseline,
+            remediation_requested=payload.auto_remediate,
+        )
         return await _detected_job(request, incident, event)
 
     @app.post('/api/incidents/analyze')

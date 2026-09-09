@@ -1,6 +1,6 @@
 '''Investigation orchestration with explicit least-context projectors.'''
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -37,6 +37,10 @@ class WorkflowDetails:
     degraded: bool
     observation: dict[str, Any]
     incident_id: str
+    # For controlled incidents this is the observation captured before the
+    # fault was injected.  Keeping it separate from ``observation`` lets the
+    # UI prove both transitions: healthy -> fault and fault -> recovery.
+    baseline_observation: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -205,6 +209,8 @@ class InvestigationWorkflow:
         decision = state['guardrail_decision']
         result = decision.result if decision.accepted and decision.result else self._safe_guardrail_result(state, decision.limitation)
         remediation = state.get('remediation') or RemediationResult(status='disabled', message='Remediation is not enabled for this result.')
+        if incident.baseline_observation is not None:
+            remediation = remediation.model_copy(update={'before_observation': incident.baseline_observation})
         if remediation.action and remediation.target and remediation.status in {'executed', 'verified', 'failed'}:
             reason = next((item.text for item in result.recommended_actions if item.rank == 1), 'Allowlisted remediation selected by policy')
             audit = RemediationAudit(
@@ -258,6 +264,7 @@ class InvestigationWorkflow:
             degraded=bool(result.limitations),
             observation=state['observation'].model_dump(mode='json') if state.get('observation') else {},
             incident_id=incident.incident_key,
+            baseline_observation=incident.baseline_observation.model_dump(mode='json') if incident.baseline_observation else {},
         )
         return WorkflowOutput(result, details)
 

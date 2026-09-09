@@ -31,6 +31,10 @@ class Incident(BaseModel):
     severity: Severity | None = None
     source: str = Field(default="manual", max_length=40)
     observation: ClusterObservation | None = None
+    # Captured immediately before a controlled Kubernetes fault. This stays
+    # on the incident record so the result can prove what changed without
+    # letting the frontend invent a baseline.
+    baseline_observation: ClusterObservation | None = None
     remediation_requested: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
