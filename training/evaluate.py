@@ -1,4 +1,4 @@
-'''Validate and evaluate a previously exported OpsPilot LoRA adapter.'''
+'''Validate, reload, and evaluate a saved OpsPilot classifier artifact.'''
 
 from __future__ import annotations
 
@@ -31,47 +31,95 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def validate_artifact(adapter: Path, dataset: Path | None = None) -> dict[str, Any]:
-    required = ('adapter_config.json', 'label_map.json', 'training_metadata.json', 'metrics.json', 'artifact_manifest.json')
-    missing = [name for name in required if not (adapter / name).is_file()]
-    model_files = [path for path in adapter.glob('adapter_model.*') if path.is_file()]
-    if missing or not model_files:
-        raise ValueError(f'incomplete adapter artifact; missing={missing}, model_file={bool(model_files)}')
+    common = ('label_map.json', 'training_metadata.json', 'metrics.json', 'artifact_manifest.json')
+    missing = [name for name in common if not (adapter / name).is_file()]
+    if missing:
+        raise ValueError(f'incomplete artifact; missing={missing}')
     label_map = _load_json(adapter / 'label_map.json')
-    if label_map.get('labels') != list(LABELS) or label_map.get('label_to_id') != {label: index for index, label in enumerate(LABELS)}:
-        raise ValueError('adapter label map does not match the six-label runtime contract')
+    expected_map = {label: index for index, label in enumerate(LABELS)}
+    if label_map.get('labels') != list(LABELS) or label_map.get('label_to_id') != expected_map:
+        raise ValueError('artifact label map does not match the six-label runtime contract')
     metadata = _load_json(adapter / 'training_metadata.json')
-    if metadata.get('labels') != list(LABELS) or not metadata.get('base_model'):
-        raise ValueError('adapter metadata has no valid base model or label ordering')
-    adapter_checksum = metadata.get('adapter_sha256')
-    actual_checksum = _sha256(model_files[0])
-    if adapter_checksum != actual_checksum:
-        raise ValueError('adapter checksum mismatch')
-    manifest = _load_json(adapter / 'artifact_manifest.json').get('files', {})
-    if manifest.get(model_files[0].name) != actual_checksum:
-        raise ValueError('artifact manifest checksum mismatch')
+    if metadata.get('labels') != list(LABELS) or not isinstance(metadata.get('base_model'), str):
+        raise ValueError('artifact metadata has no valid base model or label ordering')
+    training_config = metadata.get('training_config', {})
+    if not isinstance(training_config, dict):
+        raise TypeError('artifact training_config must be an object')
+    mode = training_config.get('mode', 'lora')
+    if mode not in {'lora', 'full'}:
+        raise ValueError(f'unsupported artifact mode: {mode!r}')
+    if mode == 'lora' or metadata.get('artifact_type') == 'peft_adapter':
+        model_files = sorted(path for path in adapter.glob('adapter_model.*') if path.is_file())
+        if not (adapter / 'adapter_config.json').is_file() or not model_files:
+            raise ValueError('incomplete LoRA artifact; adapter_config.json and adapter_model.* are required')
+    else:
+        model_files = sorted(path for path in adapter.glob('model.safetensors')) + sorted(path for path in adapter.glob('pytorch_model.bin'))
+        if not (adapter / 'config.json').is_file() or not model_files:
+            raise ValueError('incomplete full-model artifact; config.json and model weights are required')
+    manifest = _load_json(adapter / 'artifact_manifest.json').get('files')
+    if not isinstance(manifest, dict):
+        raise TypeError('artifact manifest files must be an object')
+    for name, checksum in manifest.items():
+        path = adapter / name
+        if not path.is_file() or not isinstance(checksum, str) or _sha256(path) != checksum:
+            raise ValueError(f'artifact manifest checksum mismatch: {name}')
+    for model_file in model_files:
+        if manifest.get(model_file.name) != _sha256(model_file):
+            raise ValueError(f'model checksum missing or mismatched: {model_file.name}')
+    model_checksum = _sha256(model_files[0])
+    if metadata.get('model_sha256') != model_checksum:
+        raise ValueError('artifact metadata model checksum is missing or mismatched')
+    if mode == 'lora' and metadata.get('adapter_sha256') != model_checksum:
+        raise ValueError('artifact metadata adapter checksum is missing or mismatched')
     if dataset is not None and metadata.get('dataset_sha256') != _sha256(dataset):
-        raise ValueError('dataset checksum does not match the training metadata')
-    return {'metadata': metadata, 'label_map': label_map, 'model_file': model_files[0].name}
+        raise ValueError('dataset checksum does not match training metadata')
+    metrics = _load_json(adapter / 'metrics.json')
+    for key in ('accuracy', 'macro_precision', 'macro_recall', 'macro_f1', 'weighted_f1'):
+        value = metrics.get(key)
+        if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+            raise ValueError(f'metrics has invalid {key}')
+    return {'valid': True, 'metadata': metadata, 'label_map': label_map, 'model_files': [path.name for path in model_files], 'mode': mode}
 
 
 def _metrics(labels: list[str], predictions: list[str]) -> dict[str, object]:
-    classes: dict[str, dict[str, float]] = {}
+    if len(labels) != len(predictions):
+        raise ValueError('labels and predictions have different lengths')
     matrix = {label: {other: 0 for other in LABELS} for label in LABELS}
     for expected, predicted in zip(labels, predictions, strict=True):
+        if expected not in LABELS:
+            raise ValueError(f'unknown expected label: {expected}')
         if predicted not in LABELS:
-            predicted = 'availability_issue'
+            raise ValueError(f'unknown predicted label: {predicted}')
         matrix[expected][predicted] += 1
+    classes: dict[str, dict[str, float | int]] = {}
+    precisions: list[float] = []
+    recalls: list[float] = []
     f1_values: list[float] = []
+    total = len(labels)
     for label in LABELS:
         tp = matrix[label][label]
         fp = sum(matrix[other][label] for other in LABELS if other != label)
         fn = sum(matrix[label][other] for other in LABELS if other != label)
+        support = sum(matrix[label].values())
         precision = tp / (tp + fp) if tp + fp else 0.0
         recall = tp / (tp + fn) if tp + fn else 0.0
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-        classes[label] = {'precision': precision, 'recall': recall, 'f1': f1}
+        classes[label] = {'precision': precision, 'recall': recall, 'f1': f1, 'support': support}
+        precisions.append(precision)
+        recalls.append(recall)
         f1_values.append(f1)
-    return {'samples': len(labels), 'accuracy': sum(a == b for a, b in zip(labels, predictions, strict=True)) / len(labels) if labels else 0.0, 'macro_f1': sum(f1_values) / len(f1_values), 'classes': classes, 'confusion_matrix': matrix}
+    return {
+        'samples': total,
+        'accuracy': sum(a == b for a, b in zip(labels, predictions, strict=True)) / total if total else 0.0,
+        'macro_precision': sum(precisions) / len(precisions),
+        'macro_recall': sum(recalls) / len(recalls),
+        'macro_f1': sum(f1_values) / len(f1_values),
+        'weighted_f1': sum(float(item['f1']) * int(item['support']) for item in classes.values()) / total if total else 0.0,
+        'classes': classes,
+        'samples_per_class': {label: int(classes[label]['support']) for label in LABELS},
+        'zero_score_classes': [label for label in LABELS if classes[label]['f1'] == 0.0 or classes[label]['recall'] == 0.0],
+        'confusion_matrix': matrix,
+    }
 
 
 def _prediction_label(raw: Any, labels: list[str]) -> tuple[str, float]:
@@ -82,8 +130,8 @@ def _prediction_label(raw: Any, labels: list[str]) -> tuple[str, float]:
     if not isinstance(raw, dict):
         raise TypeError('classifier returned an invalid prediction')
     score = float(raw.get('score', 0.0))
-    if not math.isfinite(score):
-        raise ValueError('classifier returned a non-finite confidence')
+    if not math.isfinite(score) or not 0 <= score <= 1:
+        raise ValueError('classifier returned a non-finite or out-of-range confidence')
     label = str(raw.get('label', '')).lower()
     if label.startswith('label_') and label[6:].isdigit():
         index = int(label[6:])
@@ -96,12 +144,16 @@ def evaluate(adapter: Path, dataset: Path) -> dict[str, object]:
     try:
         from transformers import pipeline
     except ImportError as exc:
-        raise RuntimeError('install the pinned training/requirements.txt to evaluate an adapter') from exc
+        raise RuntimeError('install the pinned training/requirements.txt to evaluate an artifact') from exc
     classifier = pipeline('text-classification', model=str(adapter), top_k=1)
-    rows = [json.loads(line) for line in dataset.read_text(encoding='utf-8').splitlines() if line.strip()]
     expected: list[str] = []
     predicted: list[str] = []
-    for row in rows:
+    for line_number, line in enumerate(dataset.read_text(encoding='utf-8').splitlines(), 1):
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if not isinstance(row, dict) or row.get('label') not in LABELS or not isinstance(row.get('text'), str):
+            raise ValueError(f'invalid dataset row at line {line_number}')
         label, _ = _prediction_label(classifier(row['text']), list(LABELS))
         expected.append(row['label'])
         predicted.append(label)
@@ -112,12 +164,12 @@ def evaluate(adapter: Path, dataset: Path) -> dict[str, object]:
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
-    parser = ArgumentParser(description='Validate and evaluate an OpsPilot LoRA classifier')
+    parser = ArgumentParser(description='Validate and evaluate an OpsPilot classifier artifact')
     parser.add_argument('adapter', type=Path)
     parser.add_argument('--dataset', type=Path, default=root / 'training/dataset/incidents.jsonl')
     args = parser.parse_args()
     if not args.adapter.exists():
-        parser.error(f'adapter not found: {args.adapter}')
+        parser.error(f'artifact not found: {args.adapter}')
     if not args.dataset.exists():
         parser.error(f'dataset not found: {args.dataset}')
     try:

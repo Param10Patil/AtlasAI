@@ -21,19 +21,21 @@ token in a notebook. A free GPU is optional: `prajjwal1/bert-tiny` and the
 ## 2. Train with fixed, reproducible settings
 
 ```python
-!rm -rf training/artifacts/opspilot-lora
-!python training/train_lora.py --dataset training/dataset/incidents.jsonl --output-dir training/artifacts/opspilot-lora --base-model prajjwal1/bert-tiny --epochs 3 --batch-size 8 --learning-rate 2e-4 --validation-fraction 0.2 --max-length 128 --seed 42
+!rm -rf training/artifacts/opspilot-comparison
+!python training/train_lora.py --dataset training/dataset/incidents.jsonl --output-dir training/artifacts/opspilot-comparison --base-model prajjwal1/bert-tiny --mode both --run-overfit-test --epochs 8 --batch-size 8 --validation-fraction 0.2 --max-length 128 --seed 42
 ```
 
+The default learning rates are 5e-5 for LoRA and 2e-5 for the full baseline.
 The seed creates 96 training and 24 validation rows (four per label). The
-command prints accuracy, macro-F1, per-class precision/recall/F1, and a
-confusion matrix. Treat these as educational offline measurements, not
-production accuracy.
+command prints trainable-parameter counts, accuracy, macro-F1, per-class
+precision/recall/F1, a confusion matrix, and a 12-row overfit diagnostic.
+Treat these as educational offline measurements, not production accuracy.
 
 ## 3. Evaluate and validate the artifact
 
 ```python
-!python training/evaluate.py training/artifacts/opspilot-lora --dataset training/dataset/incidents.jsonl | tee /content/opspilot-evaluation.json
+!python training/evaluate.py training/artifacts/opspilot-comparison/lora --dataset training/dataset/incidents.jsonl | tee /content/opspilot-lora-evaluation.json
+!python training/evaluate.py training/artifacts/opspilot-comparison/full --dataset training/dataset/incidents.jsonl | tee /content/opspilot-full-evaluation.json
 ```
 
 Then run this machine-readable gate:
@@ -43,7 +45,7 @@ import json
 from pathlib import Path
 from training.evaluate import validate_artifact
 
-adapter = Path("training/artifacts/opspilot-lora")
+adapter = Path("training/artifacts/opspilot-comparison/lora")
 dataset = Path("training/dataset/incidents.jsonl")
 validated = validate_artifact(adapter, dataset)
 metadata = json.loads((adapter / "training_metadata.json").read_text())
@@ -52,6 +54,7 @@ manifest = json.loads((adapter / "artifact_manifest.json").read_text())
 assert metadata["rows"] == 120 and metadata["train_rows"] == 96
 assert metadata["validation_rows"] == 24 and metrics["samples"] == 24
 assert metadata["labels"] == validated["label_map"]["labels"]
+assert metadata["adapter_sha256"] == metadata["model_sha256"]
 assert set(manifest["files"]) >= {"adapter_config.json", "label_map.json", "training_metadata.json", "metrics.json"}
 print("adapter validation passed")
 print(json.dumps(validated, indent=2, default=str))
@@ -64,7 +67,7 @@ Do not copy an artifact when this gate fails.
 ## 4. Download and integrate locally
 
 ```python
-!cd training/artifacts && zip -qr /content/opspilot-lora.zip opspilot-lora
+!cd training/artifacts/opspilot-comparison && zip -qr /content/opspilot-lora.zip lora
 from google.colab import files
 files.download("/content/opspilot-lora.zip")
 ```
@@ -73,9 +76,9 @@ On Windows, extract the zip so the environment variable points to the
 directory containing `adapter_config.json`:
 
 ```powershell
-Expand-Archive .\opspilot-lora.zip -DestinationPath .\training\artifacts -Force
+Expand-Archive .\opspilot-lora.zip -DestinationPath .\training\artifacts\opspilot-comparison -Force
 python -m pip install -r requirements-dev.txt -r training/requirements.txt
-$env:OPSPILOT_LORA_ADAPTER_PATH = (Resolve-Path .\training\artifacts\opspilot-lora)
+$env:OPSPILOT_LORA_ADAPTER_PATH = (Resolve-Path .\training\artifacts\opspilot-comparison\lora)
 $env:OPSPILOT_APP_ENV = 'development'
 $env:OPSPILOT_EXECUTION_MODE = 'in_process'
 $env:OPSPILOT_DATABASE_URL = 'memory://opspilot'
@@ -90,7 +93,7 @@ The production Docker/Cloud Run image intentionally excludes training
 packages and weights; use a separately reviewed image or read-only mount for
 container experiments.
 
-## Optional MLflow and interview scope
+## Optional MLflow and model-scope notes
 
 Pass `--tracking-uri file:///content/mlruns` to record a local run. Local
 metrics and artifacts are written first; a tracking failure is returned as a
@@ -99,5 +102,6 @@ the tracking files or UI.
 
 This is sequence classification, so autoregressive generation, sampling,
 temperature, top-k/top-p, greedy decoding, KV cache, and continuous batching
-are not used by this model. See `docs/interview-guide.md` for interview notes
-that map those concepts to the actual AtlasAI serving design.
+are not used by this model. The API performs single-request sequence
+classification; those generation/serving concepts apply to a different model
+shape and are intentionally out of scope here.
