@@ -1,0 +1,17 @@
+node_modules
+frontend/node_modules
+training
+training/artifacts
+docs
+tests
+mlruns
+.venv
+_localdeps
+_localdeps2
+_wheelcache
+_edge-*
+screenshots
+*.zip
+*.tar
+_kubeconfig.yaml
+opspilot-verification.tar

@@ -35,3 +35,5 @@ _edge-profile4
 _edge-*/
 assets/opspilot-*.png
 assets/*-mobile.png
+
+.vercel

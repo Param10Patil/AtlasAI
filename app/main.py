@@ -1,4 +1,4 @@
-'''FastAPI application boundary for OpsPilot.'''
+'''FastAPI application boundary for AtlasAI.'''
 
 import asyncio
 import json
@@ -233,7 +233,7 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
     async def analyze(payload: AnalyzeRequest, request: Request) -> dict[str, Any]:
         current: ApplicationRuntime = request.app.state.runtime
         if not current.ready:
-            return JSONResponse(status_code=503, content={'error': {'code': 'DEPENDENCY_UNAVAILABLE', 'message': 'OpsPilot is not ready. Please try again.', 'retryable': True}})
+            return JSONResponse(status_code=503, content={'error': {'code': 'DEPENDENCY_UNAVAILABLE', 'message': 'AtlasAI is not ready. Please try again.', 'retryable': True}})
         try:
             record, _ = await request.app.state.coordinator.submit(payload.description)
             output = await request.app.state.coordinator.wait(record)
@@ -246,16 +246,16 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
                 return JSONResponse(status_code=504, content={'error': {'code': code, 'message': 'The investigation took too long. Please try again.', 'retryable': True}})
             if code == 'CANCELLED':
                 return JSONResponse(status_code=409, content={'error': {'code': code, 'message': 'The investigation was cancelled.', 'retryable': False}})
-            return JSONResponse(status_code=500, content={'error': {'code': code if code.isupper() else 'INVESTIGATION_FAILED', 'message': 'OpsPilot could not complete the investigation. Please try again.', 'retryable': True}})
+            return JSONResponse(status_code=500, content={'error': {'code': code if code.isupper() else 'INVESTIGATION_FAILED', 'message': 'AtlasAI could not complete the investigation. Please try again.', 'retryable': True}})
         # Keep unexpected provider/database details out of the public response.
         except Exception:  # noqa: BLE001
-            return JSONResponse(status_code=500, content={'error': {'code': 'INVESTIGATION_FAILED', 'message': 'OpsPilot could not complete the investigation. Please try again.', 'retryable': True}})
+            return JSONResponse(status_code=500, content={'error': {'code': 'INVESTIGATION_FAILED', 'message': 'AtlasAI could not complete the investigation. Please try again.', 'retryable': True}})
 
     @app.post('/api/incidents/analyze/jobs', status_code=202)
     async def create_job(payload: JobRequest, request: Request) -> dict[str, Any]:
         current: ApplicationRuntime = request.app.state.runtime
         if not current.ready:
-            return JSONResponse(status_code=503, content={'error': {'code': 'DEPENDENCY_UNAVAILABLE', 'message': 'OpsPilot is not ready. Please try again.', 'retryable': True}})
+            return JSONResponse(status_code=503, content={'error': {'code': 'DEPENDENCY_UNAVAILABLE', 'message': 'AtlasAI is not ready. Please try again.', 'retryable': True}})
         try:
             record, _ = await request.app.state.coordinator.submit(payload.description, payload.client_request_id)
             return _public_event(await request.app.state.coordinator.public_status(record))
