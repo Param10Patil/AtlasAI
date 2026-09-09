@@ -1,3 +1,4 @@
 # Optional experiment tracking; never install this in the runtime image.
 -r requirements.txt
-mlflow==2.15.1
+mlflow==2.15.1; python_version < "3.13"
+mlflow==3.16.0; python_version >= "3.13"
