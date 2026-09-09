@@ -282,7 +282,8 @@ function App() {
   const cancelledRef = useRef(false);
   const lastDescriptionRef = useRef('');
   const isBusy = ['starting', 'queued', 'running'].includes(phase);
-  const simulationEnabled = runtime.cluster === 'connected' && runtime.mode === 'execute';
+  const liveClusterConnected = observation?.connection === 'connected' || cluster?.connection === 'connected';
+  const simulationEnabled = runtime.cluster === 'connected' && runtime.mode === 'execute' && liveClusterConnected;
 
   const loadCluster = async () => {
     try { const response = await fetch('/api/cluster/summary'); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.message || 'Cluster summary unavailable.'); setCluster(payload); setRuntime((current) => ({ ...current, cluster: payload.connection === 'connected' ? 'connected' : 'offline' })); setClusterError(''); }
