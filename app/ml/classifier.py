@@ -86,9 +86,9 @@ class FallbackClassifier:
         'deployment_failure': {'deploy', 'deployment', 'release', 'rollout', 'image', 'crashloop', 'startup', 'pod', 'container'},
         'database_failure': {'database', 'db', 'postgres', 'postgresql', 'sql', 'connection', 'connect', 'cannot', 'pool', 'deadlock', 'query'},
         'authentication_failure': {'auth', 'login', 'token', 'credential', '401', '403', 'permission', 'unauthorized', 'oauth'},
-        'network_failure': {'network', 'dns', 'connectivity', 'route', 'tls', 'socket', 'upstream', 'firewall', 'ingress'},
-        'performance_issue': {'latency', 'slow', 'p95', 'p99', 'performance', 'timeout', 'taking', 'seconds', 'second', 'duration', 'response', 'cpu'},
-        'availability_issue': {'503', 'unavailable', 'outage', 'downtime', 'down', 'error', 'healthy', 'serving'},
+        'network_failure': {'network', 'dns', 'connectivity', 'route', 'tls', 'socket', 'upstream', 'firewall', 'ingress', 'certificate', 'handshake', 'expiry', 'chain', 'secure'},
+        'performance_issue': {'latency', 'slow', 'p95', 'p99', 'performance', 'timeout', 'taking', 'seconds', 'second', 'duration', 'response', 'cpu', 'cache', 'eviction', 'throttle', '429'},
+        'availability_issue': {'503', 'unavailable', 'outage', 'downtime', 'down', 'error', 'healthy', 'serving', 'queue', 'backlog', 'worker', 'starvation'},
     }
 
     def classify(self, description: str) -> Classification:

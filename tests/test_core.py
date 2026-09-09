@@ -44,6 +44,20 @@ async def test_seed_rag_and_mcp_return_bounded_evidence():
 
 
 @pytest.mark.asyncio
+async def test_rag_reranks_grounded_matches_and_rejects_unrelated_queries():
+    repository = await build_seed_repository()
+    rag = RAGService(repository)
+    tls = await rag.retrieve('TLS certificate chain expiry is causing handshake failures', 3)
+    unrelated = await rag.retrieve('weather forecast for Mumbai', 3)
+    assert tls.status == 'complete'
+    assert tls.evidence[0].title == 'TLS certificate and trust failures'
+    assert tls.evidence[0].score is not None and tls.evidence[0].score > 0.4
+    assert tls.retrieval_method == 'vector_cosine_plus_lexical_rerank'
+    assert unrelated.status == 'no_evidence'
+    assert unrelated.evidence == []
+
+
+@pytest.mark.asyncio
 async def test_workflow_uses_langgraph_or_declared_fallback():
     runtime = await build_runtime()
     output = await runtime.analyze('Our payment API started returning 503 errors after today deployment.')

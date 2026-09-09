@@ -82,7 +82,12 @@ class RAGService:
             return RetrievalResponse([], 'no_evidence', 'query was empty')
         limit = max(1, min(limit, 5))
         vector = await self.embedding_provider.embed_query(query)
-        rows = await self.repository.similarity_search(vector, limit * 2)
+        # Retrieve a bounded candidate window before reranking. A tiny local
+        # vector (used when no embedding API is configured) is intentionally
+        # approximate; asking for only top-k vectors could discard the exact
+        # lexical match before the second-stage reranker sees it.
+        candidate_limit = min(50, max(limit * 8, 24))
+        rows = await self.repository.similarity_search(vector, candidate_limit)
         terms = self._terms(query)
         scored: list[tuple[float, KnowledgeRecord]] = []
         for row in rows:
@@ -99,7 +104,10 @@ class RAGService:
             title_overlap = len(terms & title_terms) / max(len(terms), 1)
             phrase_bonus = 0.08 if any(term in row.content.lower() for term in terms if len(term) > 4) else 0.0
             vector_score = self._cosine(vector, row.embedding or ())
-            score = max(0.0, min(1.0, (0.55 * vector_score) + (0.30 * lexical) + (0.15 * title_overlap) + phrase_bonus))
+            # The vector score finds semantic candidates; lexical and title
+            # overlap keep the final rank grounded in the actual incident
+            # wording when the local fallback embedding is approximate.
+            score = max(0.0, min(1.0, (0.35 * vector_score) + (0.45 * lexical) + (0.20 * title_overlap) + phrase_bonus))
             if score >= 0.18:
                 scored.append((score, row))
         scored.sort(key=lambda pair: pair[0], reverse=True)

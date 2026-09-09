@@ -12,7 +12,12 @@ class KnowledgeAgent:
         self.mcp_client = mcp_client
 
     async def investigate(self, context: KnowledgeContext) -> EvidenceBundle:
-        query = ' '.join([context.incident_summary, context.category, *context.symptoms, *context.search_terms])[:500]
+        # Keep the original incident signal dominant. The classifier category
+        # is a hypothesis, not ground truth; feeding it first can force RAG to
+        # retrieve the category's runbook even when the symptoms disagree.
+        category_hint = context.category.replace('_', ' ')
+        search_terms = [term for term in context.search_terms if term != category_hint]
+        query = ' '.join([context.incident_summary, *context.symptoms, *search_terms])[:500]
         limitations: list[str] = []
         runbooks: list = []
         history: list[dict[str, str]] = []
