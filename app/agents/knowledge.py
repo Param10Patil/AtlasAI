@@ -25,6 +25,17 @@ class KnowledgeAgent:
         retrieval_method = 'vector_cosine_plus_lexical_rerank'
         best_score = 0.0
         candidate_count = 0
+        server = getattr(self.mcp_client, 'server', None)
+        if context.observation and getattr(server, 'kubernetes', None) is not None:
+            try:
+                operational = await self.mcp_client.get_service_observations(
+                    context.observation.namespace,
+                    context.observation.workload,
+                )
+                if operational.get('status') == 'offline':
+                    limitations.append('Kubernetes observation service unavailable')
+            except (MCPUnavailable, MCPMalformedResponse):
+                limitations.append('Kubernetes observation service unavailable')
         try:
             runbook_result = await self.mcp_client.search_runbooks(query, 3)
             if runbook_result.get('status') == 'unavailable':

@@ -5,6 +5,7 @@ without coupling callers to database rows. A later deployment adapter may
 expose the same handler over stdio or HTTP.
 '''
 
+import asyncio
 import json
 from typing import Any
 
@@ -88,6 +89,22 @@ class MCPToolServer:
 
     async def verify_health(self, target: str) -> dict[str, Any]:
         request = VerifyHealthInput(target=target)
+        if self.kubernetes is not None and self.kubernetes.mode == 'execute':
+            try:
+                namespace, workload = target.split('/', 1)
+                for attempt in range(15):
+                    observation = await self.kubernetes.observe(namespace, workload)
+                    healthy = observation.health.status.value == 'healthy'
+                    if healthy or attempt == 14:
+                        return {
+                            'status': 'healthy' if healthy else 'unhealthy',
+                            'target': request.target,
+                            'message': 'health check passed' if healthy else 'health check did not pass',
+                            'observation': observation.model_dump(mode='json'),
+                        }
+                    await asyncio.sleep(1)
+            except (ValueError, KubernetesUnavailable):
+                return {'status': 'unavailable', 'message': 'health verifier is unavailable'}
         if self.remediation_executor is None:
             return {'status': 'unavailable', 'message': 'remediation executor is not configured'}
         try:

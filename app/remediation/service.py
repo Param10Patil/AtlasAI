@@ -2,6 +2,7 @@
 
 from typing import ClassVar, Protocol
 
+from app.kubernetes.contracts import ClusterObservation
 from app.remediation.contracts import RemediationContext, RemediationResult, SafeAction
 
 
@@ -96,6 +97,12 @@ class RemediationAgent:
                 )
             verification = await self.mcp_client.verify_health(target)
             healthy = verification.get('status') == 'healthy'
+            after_observation = None
+            if isinstance(verification.get('observation'), dict):
+                try:
+                    after_observation = ClusterObservation.model_validate(verification['observation'])
+                except ValueError:
+                    after_observation = None
             mode_note = ' in simulation' if execution.get('simulated') else ''
             return RemediationResult(
                 status='verified' if healthy else 'failed',
@@ -104,6 +111,8 @@ class RemediationAgent:
                 message=f'The allowlisted action completed{mode_note}; health was verified.' if healthy else 'The safe action completed but health is not verified.',
                 health_verified=healthy,
                 retry_recommended=not healthy,
+                before_observation=context.observation,
+                after_observation=after_observation,
             )
         except Exception:  # noqa: BLE001
             return RemediationResult(

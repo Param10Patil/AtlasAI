@@ -1,6 +1,7 @@
 '''Investigation orchestration with explicit least-context projectors.'''
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from app.agents.knowledge import KnowledgeAgent
@@ -12,7 +13,11 @@ from app.graph.state import WorkflowState
 from app.guardrails.contracts import GuardrailContext
 from app.guardrails.service import GuardrailService
 from app.models.schemas import AnalysisResult, Incident
-from app.remediation.contracts import RemediationContext, RemediationResult
+from app.remediation.contracts import (
+    RemediationAudit,
+    RemediationContext,
+    RemediationResult,
+)
 from app.remediation.service import RemediationAgent
 
 try:
@@ -198,10 +203,28 @@ class InvestigationWorkflow:
                 state['remediation'] = RemediationResult(status='disabled', message='Remediation is not enabled for this result.')
         decision = state['guardrail_decision']
         result = decision.result if decision.accepted and decision.result else self._safe_guardrail_result(state, decision.limitation)
+        remediation = state.get('remediation') or RemediationResult(status='disabled', message='Remediation is not enabled for this result.')
+        if remediation.action and remediation.target and remediation.status in {'executed', 'verified', 'failed'}:
+            reason = next((item.text for item in result.recommended_actions if item.rank == 1), 'Allowlisted remediation selected by policy')
+            audit = RemediationAudit(
+                incident_id=str(incident.id),
+                actor='user' if incident.remediation_requested else 'ai',
+                action=remediation.action,
+                target=remediation.target,
+                reason=reason,
+                evidence_ids=tuple(result.recommended_actions[0].evidence_ids) if result.recommended_actions else (),
+                before_observation=remediation.before_observation,
+                after_observation=remediation.after_observation,
+                verification_result=remediation.status,
+                created_at=datetime.now(timezone.utc).isoformat(),
+            )
+            try:
+                await self.repository.save_audit(audit)
+            except Exception:  # noqa: BLE001 - audit failure must not hide analysis outcome
+                result.limitations = list(dict.fromkeys([*result.limitations, 'Remediation audit persistence unavailable']))[:5]
         await self.repository.save_result(result)
         triage = state.get('triage_result')
         evidence = state.get('evidence')
-        remediation = state.get('remediation') or RemediationResult(status='disabled', message='Remediation is not enabled for this result.')
         details = WorkflowDetails(
             steps=(
                 {'name': 'triage', 'status': 'complete'},

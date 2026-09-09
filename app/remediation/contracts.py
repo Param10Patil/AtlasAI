@@ -37,3 +37,20 @@ class RemediationResult(BaseModel):
     message: str = Field(min_length=1, max_length=300)
     health_verified: bool = False
     retry_recommended: bool = False
+    before_observation: ClusterObservation | None = None
+    after_observation: ClusterObservation | None = None
+
+
+class RemediationAudit(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    incident_id: str = Field(min_length=1, max_length=80)
+    actor: str = Field(pattern='^(ai|user)$')
+    action: SafeAction
+    target: str = Field(min_length=1, max_length=120)
+    reason: str = Field(min_length=1, max_length=500)
+    evidence_ids: tuple[str, ...] = ()
+    before_observation: ClusterObservation | None = None
+    after_observation: ClusterObservation | None = None
+    verification_result: str = Field(min_length=1, max_length=80)
+    created_at: str = Field(min_length=1, max_length=80)

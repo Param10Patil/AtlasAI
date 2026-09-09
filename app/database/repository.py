@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from app.models.schemas import AnalysisResult, Incident
+from app.remediation.contracts import RemediationAudit
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,7 @@ class Repository(Protocol):
     async def similarity_search(self, vector: Sequence[float], limit: int) -> list[KnowledgeRecord]: ...
     async def upsert_knowledge(self, records: Sequence[KnowledgeRecord]) -> None: ...
     async def upsert_history(self, records: Sequence[HistoricalRecord]) -> None: ...
+    async def save_audit(self, audit: RemediationAudit) -> None: ...
 
 
 class InMemoryRepository:
@@ -79,6 +81,7 @@ class InMemoryRepository:
         self.history = history or []
         self.incidents: list[Incident] = []
         self.results: list[AnalysisResult] = []
+        self.audits: list[RemediationAudit] = []
 
     async def health(self) -> tuple[bool, str]:
         return True, 'memory repository ready'
@@ -88,6 +91,9 @@ class InMemoryRepository:
 
     async def save_result(self, result: AnalysisResult) -> None:
         self.results.append(result)
+
+    async def save_audit(self, audit: RemediationAudit) -> None:
+        self.audits.append(audit)
 
     async def upsert_knowledge(self, records: Sequence[KnowledgeRecord]) -> None:
         existing = {item.id for item in self.knowledge}
@@ -190,6 +196,25 @@ class PostgresRepository:
                     'values (%s, %s, %s, %s, %s, %s) on conflict (id) do nothing',
                     (incident.id, incident.description, incident.service, incident.category,
                      incident.severity.value if incident.severity else None, incident.created_at),
+                )
+            connection.commit()
+        await asyncio.to_thread(write)
+
+    async def save_audit(self, audit: RemediationAudit) -> None:
+        payload = audit.model_dump(mode='json')
+        def write() -> None:
+            connection = self._connect()
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    'insert into remediation_audits '
+                    '(id, incident_id, actor, action, target, reason, evidence_ids, before_observation, after_observation, verification_result, created_at) '
+                    'values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+                    (
+                        uuid4(), payload['incident_id'], payload['actor'], payload['action'], payload['target'], payload['reason'],
+                        json.dumps(payload['evidence_ids']), json.dumps(payload['before_observation']) if payload['before_observation'] else None,
+                        json.dumps(payload['after_observation']) if payload['after_observation'] else None,
+                        payload['verification_result'], payload['created_at'],
+                    ),
                 )
             connection.commit()
         await asyncio.to_thread(write)

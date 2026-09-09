@@ -76,6 +76,20 @@ create table if not exists analysis_jobs (
 );
 alter table analysis_jobs add column if not exists incident_payload jsonb;
 
+create table if not exists remediation_audits (
+  id uuid primary key,
+  incident_id varchar(80) not null,
+  actor varchar(16) not null check (actor in ('ai', 'user')),
+  action varchar(64) not null,
+  target varchar(120) not null,
+  reason varchar(500) not null,
+  evidence_ids jsonb not null default '[]'::jsonb,
+  before_observation jsonb,
+  after_observation jsonb,
+  verification_result varchar(80) not null,
+  created_at timestamptz not null
+);
+
 create index if not exists analysis_jobs_fifo_idx on analysis_jobs(status, created_at, id);
 create unique index if not exists analysis_jobs_one_running_idx
   on analysis_jobs(status) where status = 'running';
