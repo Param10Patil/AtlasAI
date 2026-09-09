@@ -14,6 +14,24 @@ generative LLM and never changes the web runtime.
 !python -m pip install -r training/requirements.txt
 ```
 
+For higher Hugging Face Hub rate limits, add a Colab secret named `HF_TOKEN`
+and run this optional cell. Public model downloads work without it; the
+unauthenticated message is only a warning.
+
+```python
+from google.colab import userdata
+from huggingface_hub import login
+
+try:
+    hf_token = userdata.get("HF_TOKEN")
+except Exception:
+    hf_token = None
+if hf_token:
+    login(token=hf_token, add_to_git_credential=False)
+else:
+    print("HF_TOKEN not set; continuing with public unauthenticated downloads")
+```
+
 Use Colab's normal GitHub authentication for a private fork; never paste a
 token in a notebook. A free GPU is optional: `prajjwal1/bert-tiny` and the
 120-row CPU-capable dataset are deliberately small.
