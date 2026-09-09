@@ -47,6 +47,9 @@ class EvidenceBundle(BaseModel):
     runbook_evidence: list[EvidenceItem] = Field(default_factory=list, max_length=5)
     historical_incidents: list[dict[str, str]] = Field(default_factory=list, max_length=5)
     retrieval_limitations: list[str] = Field(default_factory=list, max_length=5)
+    retrieval_method: str = Field(default='vector_cosine_plus_lexical_rerank', max_length=80)
+    best_score: float = Field(default=0, ge=0, le=1)
+    candidate_count: int = Field(default=0, ge=0, le=20)
 
 
 class ResolutionContext(BaseModel):

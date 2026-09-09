@@ -16,10 +16,22 @@ from app.providers.embeddings import HashEmbeddingProvider
 
 
 class RetrievalResponse:
-    def __init__(self, evidence: list[EvidenceItem], status: str, message: str | None = None):
+    def __init__(
+        self,
+        evidence: list[EvidenceItem],
+        status: str,
+        message: str | None = None,
+        *,
+        retrieval_method: str = 'vector_cosine_plus_lexical_rerank',
+        best_score: float = 0.0,
+        candidate_count: int = 0,
+    ):
         self.evidence = evidence
         self.status = status
         self.message = message
+        self.retrieval_method = retrieval_method
+        self.best_score = best_score
+        self.candidate_count = candidate_count
 
 
 class RAGService:
@@ -71,16 +83,31 @@ class RAGService:
         limit = max(1, min(limit, 5))
         vector = await self.embedding_provider.embed_query(query)
         rows = await self.repository.similarity_search(vector, limit * 2)
-        terms = set(re.findall(r'[a-z0-9]+', query.lower()))
+        terms = self._terms(query)
         scored: list[tuple[float, KnowledgeRecord]] = []
         for row in rows:
-            content_terms = set(re.findall(r'[a-z0-9]+', row.content.lower()))
+            content_terms = self._terms(row.content)
+            title_terms = self._terms(row.title)
+            overlap = terms & (content_terms | title_terms)
+            # A vector collision must not make an unrelated document look
+            # relevant in the credential-free local index. External semantic
+            # providers can still capture synonyms, while local retrieval
+            # requires at least one grounded term from the incident query.
+            if not overlap:
+                continue
             lexical = len(terms & content_terms) / max(len(terms), 1)
+            title_overlap = len(terms & title_terms) / max(len(terms), 1)
+            phrase_bonus = 0.08 if any(term in row.content.lower() for term in terms if len(term) > 4) else 0.0
             vector_score = self._cosine(vector, row.embedding or ())
-            score = max(0.0, min(1.0, (0.65 * vector_score) + (0.35 * lexical)))
-            if score >= 0.08:
+            score = max(0.0, min(1.0, (0.55 * vector_score) + (0.30 * lexical) + (0.15 * title_overlap) + phrase_bonus))
+            if score >= 0.18:
                 scored.append((score, row))
         scored.sort(key=lambda pair: pair[0], reverse=True)
+        if scored:
+            # A close second/third result is useful corroboration; unrelated
+            # low-scoring documents are excluded instead of filling top-k.
+            cutoff = max(0.18, scored[0][0] * 0.62)
+            scored = [pair for pair in scored if pair[0] >= cutoff]
         evidence = [
             EvidenceItem(
                 id=row.id,
@@ -93,7 +120,13 @@ class RAGService:
         ]
         status = 'complete' if evidence else 'no_evidence'
         message = None if evidence else 'no relevant runbook evidence found'
-        return RetrievalResponse(evidence, status, message)
+        return RetrievalResponse(
+            evidence,
+            status,
+            message,
+            best_score=round(scored[0][0], 4) if scored else 0.0,
+            candidate_count=len(scored),
+        )
 
     async def history(self, service: str | None, category: str, limit: int = 3) -> list[HistoricalRecord]:
         return await self.repository.list_history(service, category, max(1, min(limit, 5)))
@@ -111,6 +144,23 @@ class RAGService:
         if current:
             chunks.append(current)
         return chunks or [content[:chunk_size]]
+
+    @staticmethod
+    def _terms(text: str) -> set[str]:
+        stop_words = {
+            'a', 'an', 'and', 'are', 'after', 'before', 'for', 'from', 'in',
+            'into', 'is', 'of', 'on', 'or', 'the', 'to', 'use', 'when', 'with',
+        }
+        terms: set[str] = set()
+        for token in re.findall(r'[a-z0-9]+', text.lower()):
+            if token in stop_words or len(token) < 3:
+                continue
+            if token.endswith('ies') and len(token) > 4:
+                token = f'{token[:-3]}y'
+            elif token.endswith('s') and len(token) > 4:
+                token = token[:-1]
+            terms.add(token)
+        return terms
 
     @staticmethod
     def _cosine(left: Sequence[float], right: Sequence[float]) -> float:

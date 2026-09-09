@@ -16,6 +16,9 @@ class KnowledgeAgent:
         limitations: list[str] = []
         runbooks: list = []
         history: list[dict[str, str]] = []
+        retrieval_method = 'vector_cosine_plus_lexical_rerank'
+        best_score = 0.0
+        candidate_count = 0
         try:
             runbook_result = await self.mcp_client.search_runbooks(query, 3)
             if runbook_result.get('status') == 'unavailable':
@@ -23,6 +26,12 @@ class KnowledgeAgent:
             elif runbook_result.get('status') == 'no_evidence':
                 limitations.append('No runbook evidence found')
             runbooks = runbook_result.get('items', [])[:5]
+            retrieval_method = str(runbook_result.get('retrieval_method', retrieval_method))[:80]
+            try:
+                best_score = max(0.0, min(1.0, float(runbook_result.get('best_score', 0))))
+                candidate_count = max(0, min(20, int(runbook_result.get('candidate_count', len(runbooks)))))
+            except (TypeError, ValueError):
+                limitations.append('Evidence service returned invalid ranking metadata')
         except (MCPUnavailable, MCPMalformedResponse):
             limitations.append('Evidence service unavailable')
         try:
@@ -46,4 +55,7 @@ class KnowledgeAgent:
             runbook_evidence=evidence,
             historical_incidents=history,
             retrieval_limitations=list(dict.fromkeys(limitations))[:5],
+            retrieval_method=retrieval_method,
+            best_score=best_score,
+            candidate_count=candidate_count,
         )

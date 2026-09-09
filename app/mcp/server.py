@@ -40,6 +40,9 @@ class MCPToolServer:
             'status': result.status,
             'items': [item.model_dump(mode='json') for item in result.evidence],
             'message': result.message,
+            'retrieval_method': result.retrieval_method,
+            'best_score': result.best_score,
+            'candidate_count': result.candidate_count,
         }
 
     async def get_incident_history(self, service: str | None, category: str, limit: int = 3) -> dict[str, Any]:

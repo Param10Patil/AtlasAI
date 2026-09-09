@@ -195,6 +195,9 @@ class InvestigationWorkflow:
                 'runbooks_retrieved': len(evidence.runbook_evidence) if evidence else 0,
                 'historical_incidents': len(evidence.historical_incidents) if evidence else 0,
                 'retrieval_status': 'degraded' if evidence and evidence.retrieval_limitations else 'complete',
+                'retrieval_method': evidence.retrieval_method if evidence else 'unavailable',
+                'best_score': evidence.best_score if evidence else 0,
+                'candidate_count': evidence.candidate_count if evidence else 0,
             },
             tools=tuple(
                 {'name': name, 'status': 'complete'}
