@@ -54,7 +54,7 @@ def validate_adapter(adapter_path: str | Path) -> dict[str, Any]:
     path = Path(adapter_path)
     if not path.is_dir():
         raise AdapterValidationError(f'LoRA adapter directory not found: {path}')
-    required = ('adapter_config.json', 'label_map.json', 'training_metadata.json', 'artifact_manifest.json')
+    required = ('adapter_config.json', 'label_map.json', 'training_metadata.json', 'metrics.json', 'artifact_manifest.json')
     missing = [name for name in required if not (path / name).is_file()]
     model_files = sorted(candidate for candidate in path.glob('adapter_model.*') if candidate.is_file())
     if missing or not model_files:
@@ -70,13 +70,20 @@ def validate_adapter(adapter_path: str | Path) -> dict[str, Any]:
     checksum = _sha256(model_file)
     if metadata.get('adapter_sha256') != checksum:
         raise AdapterValidationError('LoRA adapter checksum mismatch')
+    metrics = _json_object(path / 'metrics.json')
+    for key in ('accuracy', 'macro_precision', 'macro_recall', 'macro_f1', 'weighted_f1'):
+        value = metrics.get(key)
+        if not isinstance(value, (int, float)) or not math.isfinite(float(value)) or not 0 <= float(value) <= 1:
+            raise AdapterValidationError(f'LoRA metrics has invalid {key}')
+    if not isinstance(metrics.get('samples'), int) or metrics['samples'] <= 0:
+        raise AdapterValidationError('LoRA metrics has no held-out samples')
     manifest = _json_object(path / 'artifact_manifest.json').get('files')
     if not isinstance(manifest, dict) or manifest.get(model_file.name) != checksum:
         raise AdapterValidationError('LoRA artifact manifest checksum mismatch')
     config = _json_object(path / 'adapter_config.json')
     if config.get('base_model_name_or_path') and config['base_model_name_or_path'] != metadata['base_model']:
         raise AdapterValidationError('LoRA base model differs between adapter config and metadata')
-    return {'path': path, 'labels': list(LABELS), 'label_map': expected_map, 'metadata': metadata, 'model_file': model_file}
+    return {'path': path, 'labels': list(LABELS), 'label_map': expected_map, 'metadata': metadata, 'metrics': metrics, 'model_file': model_file}
 
 
 class FallbackClassifier:

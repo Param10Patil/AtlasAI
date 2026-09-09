@@ -20,6 +20,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _dataset_sha256(path: Path) -> str:
+    """Hash dataset content independent of Windows/Unix line endings."""
+
+    content = path.read_bytes().replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    return hashlib.sha256(content).hexdigest()
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding='utf-8'))
@@ -71,7 +78,7 @@ def validate_artifact(adapter: Path, dataset: Path | None = None) -> dict[str, A
         raise ValueError('artifact metadata model checksum is missing or mismatched')
     if mode == 'lora' and metadata.get('adapter_sha256') != model_checksum:
         raise ValueError('artifact metadata adapter checksum is missing or mismatched')
-    if dataset is not None and metadata.get('dataset_sha256') != _sha256(dataset):
+    if dataset is not None and metadata.get('dataset_sha256') != _dataset_sha256(dataset):
         raise ValueError('dataset checksum does not match training metadata')
     metrics = _load_json(adapter / 'metrics.json')
     for key in ('accuracy', 'macro_precision', 'macro_recall', 'macro_f1', 'weighted_f1'):

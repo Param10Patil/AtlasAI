@@ -76,6 +76,7 @@ class RemediationAgent:
                 action=action,
                 target=target,
                 message='A safe action was prepared and is waiting for the policy gate.',
+                before_observation=context.observation,
             )
         try:
             execution = await self.mcp_client.execute_safe_action(action.value, target)
@@ -94,6 +95,7 @@ class RemediationAgent:
                     target=target,
                     message='A simulated executor cannot change a connected cluster; no action was applied.',
                     health_verified=False,
+                    before_observation=context.observation,
                 )
             verification = await self.mcp_client.verify_health(target)
             healthy = verification.get('status') == 'healthy'

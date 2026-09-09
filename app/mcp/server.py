@@ -94,6 +94,18 @@ class MCPToolServer:
                 namespace, workload = target.split('/', 1)
                 for attempt in range(15):
                     observation = await self.kubernetes.observe(namespace, workload)
+                    # An execute-mode configuration without a reachable
+                    # cluster is an unavailable verifier, not an unhealthy
+                    # service. Return immediately so a request-driven Cloud
+                    # Run instance does not spend 15 seconds polling a
+                    # missing control plane.
+                    if observation.connection.value != 'connected':
+                        return {
+                            'status': 'unavailable',
+                            'target': request.target,
+                            'message': 'Kubernetes health observation is unavailable',
+                            'observation': observation.model_dump(mode='json'),
+                        }
                     healthy = observation.health.status.value == 'healthy'
                     if healthy or attempt == 14:
                         return {
@@ -269,6 +281,21 @@ class MCPToolClient:
 
     async def get_incident_history(self, service: str | None, category: str, limit: int = 3) -> dict[str, Any]:
         return await self.call_tool('get_incident_history', {'service': service, 'category': category, 'limit': limit})
+
+    async def get_cluster_health(self, namespace: str, workload: str) -> dict[str, Any]:
+        return await self.call_tool('get_cluster_health', {'namespace': namespace, 'workload': workload})
+
+    async def get_service_observations(self, namespace: str, workload: str) -> dict[str, Any]:
+        return await self.call_tool('get_service_observations', {'namespace': namespace, 'workload': workload})
+
+    async def get_pod_status(self, namespace: str, workload: str) -> dict[str, Any]:
+        return await self.call_tool('get_pod_status', {'namespace': namespace, 'workload': workload})
+
+    async def get_deployment_status(self, namespace: str, workload: str) -> dict[str, Any]:
+        return await self.call_tool('get_deployment_status', {'namespace': namespace, 'workload': workload})
+
+    async def get_recent_events(self, namespace: str, workload: str) -> dict[str, Any]:
+        return await self.call_tool('get_recent_events', {'namespace': namespace, 'workload': workload})
 
     async def execute_safe_action(self, action: str, target: str) -> dict[str, Any]:
         return await self.call_tool('execute_safe_action', {'action': action, 'target': target})

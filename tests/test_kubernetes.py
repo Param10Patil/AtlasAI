@@ -12,6 +12,7 @@ from app.kubernetes.contracts import (
 )
 from app.kubernetes.detection import IncidentDetector
 from app.kubernetes.service import KubernetesService, KubernetesUnavailable
+from app.remediation.policy import ActionPolicy, PolicyViolation
 
 
 def _observation(status: HealthStatus) -> ClusterObservation:
@@ -48,6 +49,15 @@ async def test_kubernetes_scope_rejects_non_demo_targets():
         await service.observe('ops-demo', 'other-workload')
 
 
+@pytest.mark.asyncio
+async def test_kubernetes_scope_rejects_non_checkout_workload_even_if_service_is_constructed_directly():
+    service = KubernetesService(mode='disabled', namespace='ops-demo', workload='other-workload')
+    with pytest.raises(KubernetesUnavailable):
+        await service.observe('ops-demo', 'other-workload')
+    with pytest.raises(KubernetesUnavailable):
+        await service.summary('other-namespace')
+
+
 def test_observation_signal_is_bounded_and_contains_real_fields():
     observation = _observation(HealthStatus.DEGRADED)
     observation.pods[0].waiting_reason = 'ImagePullBackOff'
@@ -71,3 +81,45 @@ def test_health_parser_handles_kubernetes_like_objects():
     assert parsed.available_replicas == 1
     assert parsed.revision == '2'
     assert parsed.rollout_complete is False
+
+
+def test_action_policy_rejects_arbitrary_target_and_action():
+    policy = ActionPolicy()
+    assert policy.validate_target('ops-demo/checkout-api') == ('ops-demo', 'checkout-api')
+    with pytest.raises(PolicyViolation):
+        policy.validate_target('default/checkout-api')
+    with pytest.raises(PolicyViolation):
+        policy.validate_target('ops-demo/other')
+    with pytest.raises(PolicyViolation):
+        policy.validate_action('delete_namespace')
+
+
+def test_rollback_patch_removes_injected_command_when_healthy_revision_had_none():
+    deployment = SimpleNamespace(
+        metadata=SimpleNamespace(annotations={
+            'opspilot.io/healthy-image': 'nginx:1.25-alpine',
+            'opspilot.io/healthy-command': 'null',
+            'opspilot.io/healthy-readiness': 'null',
+        }),
+    )
+
+    class Apps:
+        def __init__(self):
+            self.patch = None
+
+        def read_namespaced_deployment(self, name, namespace):
+            return deployment
+
+        def patch_namespaced_deployment(self, name, namespace, patch):
+            self.patch = patch
+
+    service = KubernetesService(mode='execute')
+    service._loaded = True
+    service._load_error = None
+    service._apps = Apps()
+    service._core = object()
+    service._rollback('checkout-api', 'ops-demo')
+    container = service._apps.patch['spec']['template']['spec']['containers'][0]
+    assert container['image'] == 'nginx:1.25-alpine'
+    assert container['command'] is None
+    assert container['readinessProbe'] is None

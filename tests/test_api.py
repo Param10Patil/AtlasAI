@@ -62,4 +62,9 @@ def test_mcp_json_rpc_boundary_supports_initialize_and_discovery():
         assert initialized.json()['result']['serverInfo']['name'] == 'opspilot-knowledge'
         tools = client.post('/internal/v1/mcp', json={'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'})
         names = [tool['name'] for tool in tools.json()['result']['tools']]
-        assert {'search_runbooks', 'get_incident_history', 'execute_safe_action', 'verify_health'} <= set(names)
+        assert {
+            'search_runbooks', 'get_incident_history', 'get_cluster_health',
+            'get_service_observations', 'get_pod_status',
+            'get_deployment_status', 'get_recent_events',
+            'execute_safe_action', 'verify_health',
+        } <= set(names)

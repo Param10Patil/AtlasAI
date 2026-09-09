@@ -25,6 +25,7 @@ from app.kubernetes.contracts import (
     NamespaceSummary,
     PodObservation,
 )
+from app.remediation.policy import ActionPolicy, PolicyViolation
 
 
 class KubernetesUnavailable(RuntimeError):
@@ -48,6 +49,10 @@ class KubernetesService:
         self.mode = mode
         self.namespace = namespace
         self.workload = workload
+        # The protected namespace is an invariant, not user-configurable
+        # authorization. Settings also validate this, but keeping the fixed
+        # value here makes direct service use fail closed as well.
+        self.policy = ActionPolicy(allowed_namespace="ops-demo", allowed_targets=frozenset({"checkout-api"}))
         self._loaded = False
         self._load_error: str | None = None
         self._core: Any = None
@@ -90,10 +95,12 @@ class KubernetesService:
             self._load_error = f"Kubernetes configuration unavailable ({type(exc).__name__})"
 
     def _scope(self, namespace: str, workload: str) -> None:
-        if namespace != self.namespace:
-            raise KubernetesUnavailable("namespace is outside the approved scope")
-        if workload != self.workload or not self._name_pattern.fullmatch(workload):
+        if not self._name_pattern.fullmatch(workload):
             raise KubernetesUnavailable("workload is outside the approved scope")
+        try:
+            self.policy.validate_target(f"{namespace}/{workload}")
+        except PolicyViolation as exc:
+            raise KubernetesUnavailable(str(exc)) from exc
 
     def _offline(self, namespace: str, workload: str, reason: str) -> ClusterObservation:
         return ClusterObservation(
@@ -137,7 +144,7 @@ class KubernetesService:
         )
 
     async def summary(self, namespace: str) -> NamespaceSummary:
-        if namespace != self.namespace:
+        if namespace != self.policy.allowed_namespace:
             raise KubernetesUnavailable("namespace is outside the approved scope")
         return await asyncio.to_thread(self._summary_sync, namespace)
 
@@ -170,6 +177,7 @@ class KubernetesService:
             raise KubernetesUnavailable("incident scenario is not allowlisted")
         if self.mode != "execute":
             raise KubernetesUnavailable("Kubernetes execution mode is not enabled")
+        self._scope(self.namespace, self.workload)
         return await asyncio.to_thread(self._inject_sync, scenario)
 
     def _inject_sync(self, scenario: str) -> ClusterObservation:
@@ -205,8 +213,10 @@ class KubernetesService:
         return await asyncio.to_thread(self._execute_sync, action, target)
 
     def _execute_sync(self, action: str, target: str) -> bool:
-        if action not in self._allowed_actions:
-            raise KubernetesUnavailable("action is not allowlisted")
+        try:
+            self.policy.validate_action(action)
+        except PolicyViolation as exc:
+            raise KubernetesUnavailable(str(exc)) from exc
         namespace, workload = self._target(target)
         self._ensure_client()
         if self._load_error or self._apps is None or self._core is None:
@@ -223,11 +233,12 @@ class KubernetesService:
             raise KubernetesUnavailable("Kubernetes action failed") from exc
 
     def _target(self, target: str) -> tuple[str, str]:
-        parts = target.split("/", 1)
-        if len(parts) != 2:
-            raise KubernetesUnavailable("target must be namespace/workload")
-        self._scope(parts[0], parts[1])
-        return parts[0], parts[1]
+        try:
+            namespace, workload = self.policy.validate_target(target)
+        except PolicyViolation as exc:
+            raise KubernetesUnavailable(str(exc)) from exc
+        self._scope(namespace, workload)
+        return namespace, workload
 
     def _restart(self, workload: str, namespace: str) -> None:
         pods = self._core.list_namespaced_pod(namespace, label_selector=f"app.kubernetes.io/name={workload}").items
@@ -248,15 +259,17 @@ class KubernetesService:
         if command_raw:
             try:
                 command = json.loads(command_raw)
-                if command is not None:
-                    container["command"] = command
+                # A JSON null is intentional: it removes a crash-injection
+                # command and restores the image's default entrypoint.
+                container["command"] = command
             except json.JSONDecodeError:
                 raise KubernetesUnavailable("recorded rollback target is invalid")
         if readiness_raw:
             try:
                 readiness = json.loads(readiness_raw)
-                if readiness:
-                    container["readinessProbe"] = readiness
+                # Preserve the original absence as an explicit field removal
+                # when a rollout-failure probe was injected.
+                container["readinessProbe"] = readiness
             except json.JSONDecodeError:
                 raise KubernetesUnavailable("recorded readiness target is invalid")
         self._apps.patch_namespaced_deployment(workload, namespace, {"spec": {"template": {"spec": {"containers": [container]}}}})

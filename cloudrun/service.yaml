@@ -10,6 +10,9 @@ spec:
         autoscaling.knative.dev/maxScale: '1'
         run.googleapis.com/cpu-throttling: 'true'
     spec:
+      # Keep platform concurrency above one so the page, status stream, and a
+      # second request can reach the API while one analysis slot is running.
+      # The application queue still permits only one active analysis.
       containerConcurrency: 8
       timeoutSeconds: 300
       containers:

@@ -106,6 +106,8 @@ class Settings(BaseModel):
             errors.append('KUBERNETES_MODE must be disabled, observe, or execute')
         if self.kubernetes_namespace != 'ops-demo':
             errors.append('KUBERNETES_NAMESPACE must remain ops-demo for the protected demo boundary')
+        if self.kubernetes_workload != 'checkout-api':
+            errors.append('KUBERNETES_WORKLOAD must remain checkout-api for the protected demo boundary')
         if not self.kubernetes_workload or not self.kubernetes_workload.replace('-', '').isalnum():
             errors.append('KUBERNETES_WORKLOAD must be a DNS-safe workload name')
         return errors

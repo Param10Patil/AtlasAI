@@ -8,7 +8,7 @@ from training.evaluate import _prediction_label
 from training.train_lora import LABELS, _load_rows, _metrics, _stratified_split
 
 DATASET = 'training/dataset/incidents.jsonl'
-EXPECTED_SHA256 = '0ffd0809370d3b1fdebb193b2f78e49c98a469df48f8e64f4b5c4de384cba7af'
+EXPECTED_SHA256 = '61f88baa10c1ca09ef61dcc9d368b4fff19db9f8e507e8e9c2e465e4794c26b6'
 
 
 def test_repository_dataset_is_balanced_and_versioned():

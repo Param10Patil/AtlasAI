@@ -85,6 +85,7 @@ def _public_payload(output: Any) -> dict[str, Any]:
             'remediation': details.remediation,
             'degraded': details.degraded,
             'observation': details.observation,
+            'incident_id': details.incident_id,
         },
     }
 
@@ -133,10 +134,10 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         if not current.ready:
             return JSONResponse(
                 status_code=503,
-                content={'status': 'not_ready', 'message': current.readiness_message, 'optional': {'mlflow': 'ignored', 'lora': 'optional', 'kubernetes': 'offline', 'kubernetes_mode': current.settings.kubernetes_mode}},
+                content={'status': 'not_ready', 'message': current.readiness_message, 'optional': {'mlflow': 'ignored', 'lora': 'optional', 'kubernetes': 'offline', 'kubernetes_mode': current.settings.kubernetes_mode, 'kubernetes_namespace': current.settings.kubernetes_namespace, 'kubernetes_workload': current.settings.kubernetes_workload}},
             )
         kubernetes_status = current.kubernetes.connection.value if current.kubernetes else 'offline'
-        return {'status': 'ready', 'message': current.readiness_message, 'optional': {'mlflow': 'ignored', 'lora': 'available' if current.workflow.triage_agent.classifier.__class__.__name__ == 'LoRAClassifier' else 'fallback', 'kubernetes': kubernetes_status, 'kubernetes_mode': current.settings.kubernetes_mode}}
+        return {'status': 'ready', 'message': current.readiness_message, 'optional': {'mlflow': 'ignored', 'lora': 'available' if current.workflow.triage_agent.classifier.__class__.__name__ == 'LoRAClassifier' else 'fallback', 'kubernetes': kubernetes_status, 'kubernetes_mode': current.settings.kubernetes_mode, 'kubernetes_namespace': current.settings.kubernetes_namespace, 'kubernetes_workload': current.settings.kubernetes_workload}}
 
     @app.get('/api/cluster/summary')
     async def cluster_summary(request: Request) -> dict[str, Any]:

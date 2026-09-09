@@ -33,6 +33,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _dataset_sha256(path: Path) -> str:
+    """Hash dataset content independent of Windows/Unix line endings."""
+
+    content = path.read_bytes().replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    return hashlib.sha256(content).hexdigest()
+
+
 def _load_rows(path: Path) -> tuple[list[dict[str, str]], dict[str, Any]]:
     if not path.is_file():
         raise ValueError(f'dataset not found: {path}')
@@ -87,7 +94,7 @@ def _load_rows(path: Path) -> tuple[list[dict[str, str]], dict[str, Any]]:
         problems.append(f'labels need at least two rows: {missing_labels}')
     diagnostics = {
         'path': str(path),
-        'dataset_sha256': _sha256(path),
+        'dataset_sha256': _dataset_sha256(path),
         'rows': len(rows),
         'class_counts': counts,
         'duplicate_text_lines': duplicate_text_lines,
@@ -593,7 +600,11 @@ def main() -> int:
     results: dict[str, Any] = {}
     try:
         for mode in modes:
-            learning_rate = args.learning_rate if args.learning_rate is not None else 5e-4
+            # Keep the defaults conservative for a tiny six-class dataset:
+            # LoRA adapts quickly, while full fine-tuning needs a smaller
+            # step to avoid wiping out the pretrained representation.
+            default_learning_rate = 5e-5 if mode == 'lora' else 2e-5
+            learning_rate = args.learning_rate if args.learning_rate is not None else default_learning_rate
             output_dir = args.output_dir / mode if args.mode == 'both' else args.output_dir
             results[mode] = train(args.dataset, output_dir, args.base_model, args.epochs, args.batch_size, learning_rate, args.tracking_uri, args.seed, args.validation_fraction, args.max_length, mode=mode, early_stopping_patience=args.early_stopping_patience, run_overfit=args.run_overfit_test)
         if args.mode == 'both':

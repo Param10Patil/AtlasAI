@@ -44,6 +44,21 @@ async def test_seed_rag_and_mcp_return_bounded_evidence():
 
 
 @pytest.mark.asyncio
+async def test_mcp_observation_client_methods_fail_closed_when_kubernetes_is_offline():
+    repository = await build_seed_repository()
+    client = MCPToolClient(server=MCPToolServer(RAGService(repository)))
+    for method in (
+        client.get_cluster_health,
+        client.get_service_observations,
+        client.get_pod_status,
+        client.get_deployment_status,
+        client.get_recent_events,
+    ):
+        response = await method('ops-demo', 'checkout-api')
+        assert response['status'] == 'offline'
+
+
+@pytest.mark.asyncio
 async def test_rag_reranks_grounded_matches_and_rejects_unrelated_queries():
     repository = await build_seed_repository()
     rag = RAGService(repository)

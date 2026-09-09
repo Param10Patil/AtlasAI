@@ -36,6 +36,7 @@ class WorkflowDetails:
     remediation: dict[str, Any]
     degraded: bool
     observation: dict[str, Any]
+    incident_id: str
 
 
 @dataclass(frozen=True)
@@ -207,7 +208,7 @@ class InvestigationWorkflow:
         if remediation.action and remediation.target and remediation.status in {'executed', 'verified', 'failed'}:
             reason = next((item.text for item in result.recommended_actions if item.rank == 1), 'Allowlisted remediation selected by policy')
             audit = RemediationAudit(
-                incident_id=str(incident.id),
+                incident_id=incident.incident_key,
                 actor='user' if incident.remediation_requested else 'ai',
                 action=remediation.action,
                 target=remediation.target,
@@ -256,6 +257,7 @@ class InvestigationWorkflow:
             remediation=remediation.model_dump(mode='json'),
             degraded=bool(result.limitations),
             observation=state['observation'].model_dump(mode='json') if state.get('observation') else {},
+            incident_id=incident.incident_key,
         )
         return WorkflowOutput(result, details)
 

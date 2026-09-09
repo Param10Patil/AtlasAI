@@ -24,6 +24,7 @@ class Incident(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID = Field(default_factory=uuid4)
+    incident_key: str = Field(default_factory=lambda: f"INC-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}-{uuid4().hex[:6].upper()}", max_length=40)
     description: str = Field(min_length=1, max_length=4000)
     service: str | None = Field(default=None, max_length=80)
     category: str | None = Field(default=None, max_length=80)
