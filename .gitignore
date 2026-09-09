@@ -5,6 +5,8 @@ __pycache__/
 .ruff_cache/
 dist/
 build/
+node_modules/
+frontend/dist/
 *.egg-info/
 training/artifacts/
 mlruns/

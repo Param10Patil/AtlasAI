@@ -312,6 +312,10 @@ def seed_records(knowledge_dir: Path) -> tuple[list[KnowledgeRecord], list[Histo
         HistoricalRecord('history-payment-503', 'payments', 'availability_issue', 'Payment API returned 503 after a release', 'Paused rollout and restored the last known-good revision after approval', datetime(2025, 6, 12, tzinfo=timezone.utc)),
         HistoricalRecord('history-pool', 'orders', 'database_failure', 'Connection pool exhausted during a traffic spike', 'Removed a leaked transaction and reduced retry amplification', datetime(2025, 4, 3, tzinfo=timezone.utc)),
         HistoricalRecord('history-auth', 'identity', 'authentication_failure', 'Token validation failed after key rotation', 'Corrected the audience configuration and rotated keys through the normal process', datetime(2025, 2, 18, tzinfo=timezone.utc)),
+        HistoricalRecord('history-queue', 'orders', 'availability_issue', 'Order workers stalled and queue age exceeded the SLO', 'Restarted the failed worker after approval and verified queue age returned to baseline', datetime(2025, 1, 27, tzinfo=timezone.utc)),
+        HistoricalRecord('history-tls', 'payments', 'network_failure', 'TLS handshakes failed after a certificate rotation', 'Restored the previous certificate chain and completed a reviewed rotation', datetime(2024, 11, 9, tzinfo=timezone.utc)),
+        HistoricalRecord('history-latency', 'api', 'performance_issue', 'API p95 latency rose after cache evictions increased', 'Reduced retry amplification and corrected the cache policy after measurement', datetime(2024, 9, 16, tzinfo=timezone.utc)),
+        HistoricalRecord('history-throttle', 'api', 'availability_issue', 'Provider throttling produced a burst of 429 responses', 'Honored retry-after and reduced non-critical traffic until quota recovered', datetime(2024, 7, 22, tzinfo=timezone.utc)),
     ]
     return records, history
 
