@@ -4,11 +4,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app ./app
-COPY static ./static
-COPY knowledge ./knowledge
-RUN addgroup --system opspilot && adduser --system --ingroup opspilot opspilot \
-    && chown -R opspilot:opspilot /app
+RUN addgroup --system opspilot && adduser --system --ingroup opspilot opspilot
+COPY --chown=opspilot:opspilot app ./app
+COPY --chown=opspilot:opspilot static ./static
+COPY --chown=opspilot:opspilot knowledge ./knowledge
 USER opspilot
 EXPOSE 8080
 CMD ["python", "-m", "app.run"]
