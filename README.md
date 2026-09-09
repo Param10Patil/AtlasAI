@@ -99,8 +99,9 @@ flowchart LR
 | LoRA artifact | **Validated** | Label map, metadata, checksums, manifest, and held-out metrics pass validation |
 | LoRA runtime inference | **Unavailable in the lightweight image** | Torch/Transformers/PEFT and the ignored artifact are intentionally not packaged there |
 | MLflow server | **Not connected** | The UI does not invent run IDs or metrics |
-| Cloud Run | **Pending authenticated deployment** | `cloudbuild.yaml` is prepared with min 0 / max 1 |
-| Vercel | **Pending authenticated deployment** | `vercel.json` and API-base wiring are prepared |
+| Cloud Run demo | **Verified** | [`atlasai-330402458472.us-central1.run.app`](https://atlasai-330402458472.us-central1.run.app) returns `status: ready`; service/revision max 1, scale-to-zero |
+| Vercel frontend | **Verified** | [`atlasai-tawny.vercel.app`](https://atlasai-tawny.vercel.app) serves the AtlasAI UI and embeds the Cloud Run API URL |
+| Secret-backed Cloud Run pipeline | **Partial** | Image build is verified; declarative deploy still needs the two Secret Manager versions named in `cloudbuild.yaml` |
 
 The validated educational adapter reports 0.583 accuracy and 0.603 macro-F1
 on 24 held-out examples. Those numbers are not production-quality evidence.
@@ -147,13 +148,19 @@ still required before a live action.
 
 ## Cloud Run deployment
 
-Cloud Run is configured for cost-controlled single-instance operation:
+The verified demo service is configured for cost-controlled single-instance
+operation:
 
 - minimum instances: `0`
 - maximum instances: `1`
 - one active analysis slot and queue capacity of one
 - default remediation mode: `simulate`
 - no Kubernetes credentials in the Cloud Run image
+
+Live demo URL: <https://atlasai-330402458472.us-central1.run.app>. It uses the
+memory repository, disables Kubernetes execution, and is intentionally not a
+production secret-backed deployment. Its `/api/ready` response is the source
+of truth for that posture.
 
 After enabling billing, Artifact Registry, Cloud Build, Secret Manager, and
 Cloud Run in the selected Google Cloud project, create the two secrets named
@@ -165,7 +172,10 @@ $tag = git rev-parse --short HEAD
 gcloud builds submit --config cloudbuild.yaml --substitutions=_IMAGE_TAG=$tag
 ```
 
-The command deploys the API only. Do not call it successful until
+The command below is the production-oriented pipeline. It expects the two
+Secret Manager versions named in `cloudrun/service.yaml`; the verified demo
+was deployed separately with the safe environment above. Do not call a new
+deployment successful until
 `gcloud run services describe atlasai --region us-central1` returns a URL and
 `/api/ready` returns `status: ready`.
 
@@ -184,10 +194,11 @@ Then deploy from the repository root:
 vercel --prod
 ```
 
-Add the final Vercel origin to the Cloud Run
-`OPSPILOT_CORS_ORIGINS` value and redeploy the API. Verify the browser can
-load `/api/ready`, inspect the cluster status, and submit an analysis before
-sharing the URL.
+The verified project is live at <https://atlasai-tawny.vercel.app>. Its
+`VITE_API_BASE_URL` points to the demo URL above, and Cloud Run allows that
+origin through `OPSPILOT_CORS_ORIGINS`. Verify the browser can load
+`/api/ready`, inspect the cluster status, and submit an analysis before
+sharing a new deployment URL.
 
 ## Training and LoRA
 
