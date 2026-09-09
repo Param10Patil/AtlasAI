@@ -203,6 +203,7 @@ function ResultView({ result, onNew, onCopy, copyState }) {
 
 function App() {
   const [description, setDescription] = useState('');
+  const [validation, setValidation] = useState('');
   const [phase, setPhase] = useState('idle');
   const [job, setJob] = useState(null);
   const [result, setResult] = useState(null);
@@ -223,7 +224,7 @@ function App() {
 
   const reset = () => {
     if (isBusy) return;
-    setDescription(''); setResult(null); setError(null); setJob(null); setPhase('idle'); setCopyState('');
+    setDescription(''); setValidation(''); setResult(null); setError(null); setJob(null); setPhase('idle'); setCopyState('');
   };
   const handleEvent = (event, id) => {
     if (activeRef.current !== id) return;
@@ -268,7 +269,7 @@ function App() {
     const id = requestId();
     const controller = new AbortController();
     activeRef.current = id; controllerRef.current = controller; cancelledRef.current = false; lastDescriptionRef.current = value;
-    setPhase('starting'); setJob(null); setError(null); setResult(null);
+    setPhase('starting'); setJob(null); setError(null); setResult(null); setValidation('');
     timeoutRef.current = window.setTimeout(() => { controller.abort(); }, 125000);
     try {
       const response = await fetch('/api/incidents/analyze/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: value, client_request_id: id }), signal: controller.signal });
@@ -295,7 +296,14 @@ function App() {
       if (activeRef.current === id) { window.clearTimeout(timeoutRef.current); timeoutRef.current = null; activeRef.current = null; controllerRef.current = null; if (!result) setPhase((current) => current === 'starting' || current === 'queued' || current === 'running' ? 'idle' : current); }
     }
   };
-  const submit = (event) => { event.preventDefault(); const value = description.trim(); if (!value || value.length > 4000 || isBusy) return; run(value); };
+  const submit = (event) => {
+    event.preventDefault();
+    const value = description.trim();
+    if (isBusy) return;
+    if (!value) { setValidation('Describe the incident before starting an investigation.'); return; }
+    if (value.length > 4000) { setValidation('Keep the incident description under 4,000 characters.'); return; }
+    run(value);
+  };
   const cancel = async () => { if (!job?.job_id || !activeRef.current) return; cancelledRef.current = true; try { await fetch(`/api/incidents/analyze/jobs/${encodeURIComponent(job.job_id)}`, { method: 'DELETE' }); } catch { /* local cancellation still applies */ } controllerRef.current?.abort(); };
   const retry = () => { if (!isBusy && lastDescriptionRef.current) run(lastDescriptionRef.current); };
   const copySummary = async () => {
@@ -308,8 +316,23 @@ function App() {
     <>
       <header className="topbar"><div className="topbar-inner"><a className="brand" href="/" aria-label="OpsPilot home"><span className="brand-mark" aria-hidden="true">OP</span><span className="brand-name">OpsPilot</span></a><div className="topbar-meta"><RuntimePill /><p className="topbar-note">AI incident investigation assistant</p></div></div></header>
       <main className="shell">
-        <section className="intro" aria-labelledby="page-title"><div className="eyebrow-row"><p className="eyebrow">CONTROLLED INCIDENT REVIEW</p><span className="eyebrow-line" aria-hidden="true" /></div><h1 id="page-title">Clarity when systems drift.</h1><p className="lede">Describe a production signal and OpsPilot will organize the investigation, ground it in evidence, and suggest a cautious next step.</p><div className="capability-row" aria-label="Investigation stages"><span className="capability" title="Classifies the incident into a bounded category"><span className="capability-number">01</span> Classify</span><span className="capability" title="Checks runbooks, history, and connected MCP tools"><span className="capability-number">02</span> Investigate</span><span className="capability" title="Ranks a safe, evidence-backed next step"><span className="capability-number">03</span> Recommend</span><span className="capability" title="Runs only a simulated allowlisted action after the safety gate"><span className="capability-number">04</span> Verify</span></div></section>
-        <section className="card composer-card" aria-labelledby="form-title"><div className="section-heading"><div><p className="kicker">START AN INVESTIGATION</p><h2 id="form-title">Describe what went wrong</h2></div><span className="section-note">A focused signal is easier to verify</span></div><form id="incident-form" onSubmit={submit} noValidate><div className="label-row"><label className="field-label input-label" htmlFor="incident-description">Incident description</label><span className="field-note" title="Mention the service, symptom, and what changed if you know them">Service + symptom + change</span></div><textarea id="incident-description" name="description" value={description} onChange={(event) => setDescription(event.target.value.slice(0, 4000))} maxLength="4000" aria-describedby="input-hint character-count" placeholder="Example: The checkout API started returning 503 errors after today's deployment." required /><div className="field-meta"><p id="input-hint" className="input-hint">Include the service, symptom, and what changed if you know them.</p><output id="character-count" className={description.length >= 3600 ? 'character-count is-near-limit' : 'character-count'}>{countLabel}</output></div><div className="action-row"><p className="trust-note"><span className="trust-icon" aria-hidden="true">i</span> Advisory only. Every action is checked before it can run.</p><button id="submit-button" className={`primary-button ${isBusy ? 'is-loading' : ''}`} type="submit" disabled={isBusy || !description.trim()}><span className="button-label">{isBusy ? 'Analyzing…' : 'Analyze incident'}</span><span className="button-arrow" aria-hidden="true">→</span></button></div></form><div className="examples" aria-label="Example incidents"><span className="examples-label">Try a signal</span>{EXAMPLES.map((example) => <button key={example.label} type="button" onClick={() => !isBusy && setDescription(example.description)} disabled={isBusy} title={`Populate a ${example.label.toLowerCase()} example`}>{example.label}</button>)}</div></section>
+        <section className="intro" aria-labelledby="page-title">
+          <div className="eyebrow-row"><p className="eyebrow">INCIDENT CONTROL ROOM</p><span className="eyebrow-line" aria-hidden="true" /></div>
+          <h1 id="page-title">One clear next step for every incident.</h1>
+          <p className="lede">Give OpsPilot the signal. It classifies the incident, finds supporting runbooks, and presents a safe operator decision in one place.</p>
+          <div className="workflow-rail" aria-label="Investigation stages"><span className="workflow-step">01 Signal</span><span className="workflow-connector" aria-hidden="true" /><span className="workflow-step">02 Evidence</span><span className="workflow-connector" aria-hidden="true" /><span className="workflow-step">03 Decision</span><span className="workflow-connector" aria-hidden="true" /><span className="workflow-step">04 Verify</span></div>
+        </section>
+        <section className="card composer-card" aria-labelledby="form-title">
+          <div className="section-heading"><div><p className="kicker">NEW INVESTIGATION</p><h2 id="form-title">Describe what went wrong</h2></div><span className="section-note">Service · symptom · change</span></div>
+          <form id="incident-form" onSubmit={submit} noValidate>
+            <label className="field-label input-label" htmlFor="incident-description">Incident description</label>
+            <textarea id="incident-description" name="description" value={description} onChange={(event) => { setDescription(event.target.value.slice(0, 4000)); setValidation(''); }} maxLength="4000" aria-describedby="input-hint character-count validation-message" aria-invalid={Boolean(validation)} placeholder="Example: The checkout API started returning 503 errors after today's deployment." required />
+            <div className="field-meta"><p id="input-hint" className="input-hint">Include the service, symptom, and what changed if you know them.</p><output id="character-count" className={description.length >= 3600 ? 'character-count is-near-limit' : 'character-count'}>{countLabel}</output></div>
+            <p id="validation-message" className="validation-message" role="alert" hidden={!validation}>{validation}</p>
+            <div className="action-row"><p className="trust-note"><span className="trust-icon" aria-hidden="true">i</span> Advisory only. Actions require the safety gate.</p><button id="submit-button" className={`primary-button ${isBusy ? 'is-loading' : ''}`} type="submit" disabled={isBusy || !description.trim()}><span className="button-label">{isBusy ? 'Analyzing…' : 'Analyze incident'}</span><span className="button-arrow" aria-hidden="true">→</span></button></div>
+          </form>
+          <div className="examples" aria-label="Example incidents"><span className="examples-label">Start with a signal</span>{EXAMPLES.map((example) => <button key={example.label} type="button" onClick={() => !isBusy && setDescription(example.description)} disabled={isBusy} title={`Populate a ${example.label.toLowerCase()} example`}>{example.label}</button>)}</div>
+        </section>
         {isBusy && <ProgressCard phase={phase} job={job} onCancel={cancel} />}
         {error && <ErrorCard message={error.message} retryable={error.retryable} onRetry={retry} onNew={reset} />}
         {result && phase === 'success' && <ResultView result={result} onNew={reset} onCopy={copySummary} copyState={copyState} />}
