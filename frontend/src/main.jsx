@@ -119,6 +119,24 @@ function ErrorCard({ message, retryable, onRetry, onNew }) {
   );
 }
 
+function RuntimePill() {
+  const [runtime, setRuntime] = useState({ state: 'checking', label: 'Checking service' });
+  useEffect(() => {
+    let active = true;
+    fetch('/api/ready')
+      .then(async (response) => ({ ok: response.ok, payload: await response.json().catch(() => ({})) }))
+      .then(({ ok, payload }) => {
+        if (!active) return;
+        if (!ok || payload.status !== 'ready') setRuntime({ state: 'offline', label: 'Service unavailable' });
+        else if (payload.optional?.lora === 'available') setRuntime({ state: 'ready', label: 'API ready · LoRA' });
+        else setRuntime({ state: 'ready', label: 'API ready · safe fallback' });
+      })
+      .catch(() => { if (active) setRuntime({ state: 'offline', label: 'Service unavailable' }); });
+    return () => { active = false; };
+  }, []);
+  return <span className="environment-pill"><span className={`status-dot ${runtime.state}`} aria-hidden="true" /> {runtime.label}</span>;
+}
+
 function StatusList({ items, empty = 'No status reported.' }) {
   if (!items?.length) return <li>{empty}</li>;
   return items.map((item, index) => (
@@ -288,7 +306,7 @@ function App() {
 
   return (
     <>
-      <header className="topbar"><div className="topbar-inner"><a className="brand" href="/" aria-label="OpsPilot home"><span className="brand-mark" aria-hidden="true">OP</span><span className="brand-name">OpsPilot</span></a><div className="topbar-meta"><span className="environment-pill"><span className="status-dot" aria-hidden="true" /> Local simulation</span><p className="topbar-note">AI incident investigation assistant</p></div></div></header>
+      <header className="topbar"><div className="topbar-inner"><a className="brand" href="/" aria-label="OpsPilot home"><span className="brand-mark" aria-hidden="true">OP</span><span className="brand-name">OpsPilot</span></a><div className="topbar-meta"><RuntimePill /><p className="topbar-note">AI incident investigation assistant</p></div></div></header>
       <main className="shell">
         <section className="intro" aria-labelledby="page-title"><div className="eyebrow-row"><p className="eyebrow">CONTROLLED INCIDENT REVIEW</p><span className="eyebrow-line" aria-hidden="true" /></div><h1 id="page-title">Clarity when systems drift.</h1><p className="lede">Describe a production signal and OpsPilot will organize the investigation, ground it in evidence, and suggest a cautious next step.</p><div className="capability-row" aria-label="Investigation stages"><span className="capability" title="Classifies the incident into a bounded category"><span className="capability-number">01</span> Classify</span><span className="capability" title="Checks runbooks, history, and connected MCP tools"><span className="capability-number">02</span> Investigate</span><span className="capability" title="Ranks a safe, evidence-backed next step"><span className="capability-number">03</span> Recommend</span><span className="capability" title="Runs only a simulated allowlisted action after the safety gate"><span className="capability-number">04</span> Verify</span></div></section>
         <section className="card composer-card" aria-labelledby="form-title"><div className="section-heading"><div><p className="kicker">START AN INVESTIGATION</p><h2 id="form-title">Describe what went wrong</h2></div><span className="section-note">A focused signal is easier to verify</span></div><form id="incident-form" onSubmit={submit} noValidate><div className="label-row"><label className="field-label input-label" htmlFor="incident-description">Incident description</label><span className="field-note" title="Mention the service, symptom, and what changed if you know them">Service + symptom + change</span></div><textarea id="incident-description" name="description" value={description} onChange={(event) => setDescription(event.target.value.slice(0, 4000))} maxLength="4000" aria-describedby="input-hint character-count" placeholder="Example: The checkout API started returning 503 errors after today's deployment." required /><div className="field-meta"><p id="input-hint" className="input-hint">Include the service, symptom, and what changed if you know them.</p><output id="character-count" className={description.length >= 3600 ? 'character-count is-near-limit' : 'character-count'}>{countLabel}</output></div><div className="action-row"><p className="trust-note"><span className="trust-icon" aria-hidden="true">i</span> Advisory only. Every action is checked before it can run.</p><button id="submit-button" className={`primary-button ${isBusy ? 'is-loading' : ''}`} type="submit" disabled={isBusy || !description.trim()}><span className="button-label">{isBusy ? 'Analyzing…' : 'Analyze incident'}</span><span className="button-arrow" aria-hidden="true">→</span></button></div></form><div className="examples" aria-label="Example incidents"><span className="examples-label">Try a signal</span>{EXAMPLES.map((example) => <button key={example.label} type="button" onClick={() => !isBusy && setDescription(example.description)} disabled={isBusy} title={`Populate a ${example.label.toLowerCase()} example`}>{example.label}</button>)}</div></section>

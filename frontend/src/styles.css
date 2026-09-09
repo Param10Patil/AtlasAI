@@ -49,7 +49,9 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .topbar-meta { display: flex; align-items: center; gap: 18px; }
 .topbar-note { margin: 0; color: var(--muted); font-size: 14px; }
 .environment-pill { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #c5dbe3; border-radius: 999px; padding: 5px 10px; background: var(--brand-soft); color: var(--brand); font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
-.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px rgb(35 122 87 / 12%); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 3px rgb(154 100 20 / 12%); }
+.status-dot.ready { background: var(--success); box-shadow: 0 0 0 3px rgb(35 122 87 / 12%); }
+.status-dot.offline { background: var(--danger); box-shadow: 0 0 0 3px rgb(177 58 58 / 12%); }
 
 .shell { width: min(100% - 48px, var(--content-max)); margin: 0 auto; padding: clamp(48px, 8vw, 88px) 0 72px; }
 .intro { max-width: 760px; margin-bottom: 40px; }
