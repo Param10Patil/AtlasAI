@@ -19,6 +19,7 @@ training/reports/
 
 # Temporary local verification files
 _kubeconfig.yaml
+_gke-*
 _localdeps/
 _localdeps2/
 _wheelcache/

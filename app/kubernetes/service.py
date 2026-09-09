@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from collections.abc import Mapping
 from datetime import datetime
@@ -85,10 +86,33 @@ class KubernetesService:
             self._load_error = "Kubernetes client is not installed"
             return
         try:
-            try:
-                config.load_incluster_config()
-            except ConfigException:
-                config.load_kube_config()
+            hosted_server = os.getenv('OPSPILOT_KUBERNETES_SERVER') or os.getenv('KUBERNETES_SERVER')
+            hosted_token = os.getenv('OPSPILOT_KUBERNETES_TOKEN') or os.getenv('KUBERNETES_TOKEN')
+            hosted_ca = os.getenv('OPSPILOT_KUBERNETES_CA_DATA') or os.getenv('KUBERNETES_CA_DATA')
+            if hosted_server and hosted_token:
+                cluster: dict[str, Any] = {'server': hosted_server}
+                if hosted_ca:
+                    cluster['certificate-authority-data'] = hosted_ca
+                else:
+                    # A hosted endpoint without CA data is still usable for a
+                    # deliberately temporary demo, but never silently changes
+                    # the local kubeconfig path.
+                    cluster['insecure-skip-tls-verify'] = True
+                config.load_kube_config_from_dict(
+                    {
+                        'apiVersion': 'v1',
+                        'kind': 'Config',
+                        'clusters': [{'name': 'atlasai-hosted', 'cluster': cluster}],
+                        'users': [{'name': 'atlasai-hosted', 'user': {'token': hosted_token}}],
+                        'contexts': [{'name': 'atlasai-hosted', 'context': {'cluster': 'atlasai-hosted', 'user': 'atlasai-hosted'}}],
+                        'current-context': 'atlasai-hosted',
+                    }
+                )
+            else:
+                try:
+                    config.load_incluster_config()
+                except ConfigException:
+                    config.load_kube_config()
             self._core = client.CoreV1Api()
             self._apps = client.AppsV1Api()
             self._api_exception = client.exceptions.ApiException
