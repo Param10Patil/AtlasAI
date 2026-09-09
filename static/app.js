@@ -196,7 +196,12 @@
     show(errorPanel, false);
     show(resultPanel, true);
     announce(`Analysis complete. ${title}. Severity ${severity}. Confidence ${percent} percent.`);
-    if (resultTitle && typeof resultTitle.focus === 'function') resultTitle.focus({ preventScroll: true });
+    if (resultTitle && typeof resultTitle.focus === 'function') {
+      const bounds = resultTitle.getBoundingClientRect();
+      const outsideViewport = bounds.top < 0 || bounds.bottom > window.innerHeight;
+      if (outsideViewport && typeof resultTitle.scrollIntoView === 'function') resultTitle.scrollIntoView({ block: 'start' });
+      resultTitle.focus({ preventScroll: true });
+    }
   };
 
   const eventStatus = (event) => ['queued', 'running', 'complete', 'failed', 'cancelled'].includes(event?.status) ? event.status : null;
