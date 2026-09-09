@@ -129,7 +129,7 @@ the tracking files or UI.
 
 MLflow is intentionally optional to keep the normal Colab install small. If
 you want local tracking, install it after the successful training dependency
-install with `!python -m pip install -r training/requirements-mlflow.txt`.
+install with `!/content/atlasai-py311/bin/python -m pip install -r training/requirements-mlflow.txt`.
 
 This is sequence classification, so autoregressive generation, sampling,
 temperature, top-k/top-p, greedy decoding, KV cache, and continuous batching
