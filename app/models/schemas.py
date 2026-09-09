@@ -30,6 +30,7 @@ class Incident(BaseModel):
     severity: Severity | None = None
     source: str = Field(default="manual", max_length=40)
     observation: ClusterObservation | None = None
+    remediation_requested: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("description")

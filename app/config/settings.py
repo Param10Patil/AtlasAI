@@ -57,6 +57,7 @@ class Settings(BaseModel):
     remediation_mode: RemediationMode = Field(
         default_factory=lambda: RemediationMode(_env('REMEDIATION_MODE', 'simulate') or 'simulate')
     )
+    auto_remediation: bool = Field(default_factory=lambda: (_env('AUTO_REMEDIATION', 'false') or 'false').lower() in {'1', 'true', 'yes'})
     kubernetes_mode: str = Field(default_factory=lambda: _env('KUBERNETES_MODE', 'disabled') or 'disabled')
     kubernetes_namespace: str = Field(default_factory=lambda: _env('KUBERNETES_NAMESPACE', 'ops-demo') or 'ops-demo', max_length=63)
     kubernetes_workload: str = Field(default_factory=lambda: _env('KUBERNETES_WORKLOAD', 'checkout-api') or 'checkout-api', max_length=120)

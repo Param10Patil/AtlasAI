@@ -49,6 +49,7 @@ class InvestigationWorkflow:
         guardrails: GuardrailService | None = None,
         remediation_agent: RemediationAgent | None = None,
         remediation_enabled: bool = False,
+        auto_remediation: bool = False,
     ):
         self.triage_agent = triage
         self.knowledge_agent = knowledge
@@ -57,6 +58,7 @@ class InvestigationWorkflow:
         self.guardrails = guardrails or GuardrailService()
         self.remediation_agent = remediation_agent
         self.remediation_enabled = remediation_enabled
+        self.auto_remediation = auto_remediation
         self.engine = 'langgraph' if StateGraph is not None else 'sequential-fallback'
         self.graph = self._build_graph() if StateGraph is not None else None
 
@@ -118,7 +120,7 @@ class InvestigationWorkflow:
                 observation=state.get('observation'),
             )
             return {
-                'remediation': await self.remediation_agent.remediate(context, enabled=self.remediation_enabled),
+                'remediation': await self.remediation_agent.remediate(context, enabled=bool(state.get('remediation_enabled', self.remediation_enabled))),
                 'remediation_attempts': attempts,
             }
 
@@ -148,7 +150,13 @@ class InvestigationWorkflow:
 
     async def analyze(self, incident: Incident) -> WorkflowOutput:
         await self.repository.save_incident(incident)
-        state: dict[str, Any] = {'original_incident': incident.description}
+        connected_observation = incident.observation is not None and incident.observation.connection.value == 'connected'
+        state: dict[str, Any] = {
+            'original_incident': incident.description,
+            'remediation_enabled': self.remediation_enabled and (
+                not connected_observation or incident.remediation_requested or self.auto_remediation
+            ),
+        }
         if incident.observation:
             state['observation'] = incident.observation
         if self.graph is not None:
@@ -185,7 +193,7 @@ class InvestigationWorkflow:
                     recommended_actions=tuple(state['guardrail_decision'].result.recommended_actions) if state['guardrail_decision'].result else (),
                     observation=incident.observation,
                 )
-                state['remediation'] = await self.remediation_agent.remediate(context, enabled=self.remediation_enabled)
+                state['remediation'] = await self.remediation_agent.remediate(context, enabled=bool(state.get('remediation_enabled', self.remediation_enabled)))
             else:
                 state['remediation'] = RemediationResult(status='disabled', message='Remediation is not enabled for this result.')
         decision = state['guardrail_decision']

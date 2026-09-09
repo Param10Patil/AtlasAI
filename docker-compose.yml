@@ -3,6 +3,8 @@ x-app-env: &app-env
   OPSPILOT_EXECUTION_MODE: in_process
   OPSPILOT_DATABASE_URL: postgresql://opspilot:opspilot@postgres:5432/opspilot
   OPSPILOT_REMEDIATION_MODE: simulate
+  OPSPILOT_AUTO_REMEDIATION: 'false'
+  OPSPILOT_KUBERNETES_MODE: disabled
   PORT: 8080
 
 x-app: &app

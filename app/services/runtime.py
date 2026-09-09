@@ -89,6 +89,7 @@ async def build_runtime(settings: Settings | None = None) -> ApplicationRuntime:
         repository,
         remediation_agent=remediation,
         remediation_enabled=settings.remediation_mode is not RemediationMode.DISABLED,
+        auto_remediation=settings.auto_remediation,
     )
     return ApplicationRuntime(settings, repository, workflow, True, readiness, kubernetes)
 

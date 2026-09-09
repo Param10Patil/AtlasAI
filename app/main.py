@@ -58,6 +58,7 @@ class SimulationRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     scenario: str = Field(pattern=r'^(deployment_failure|pod_crash|rollout_failure)$')
+    auto_remediate: bool = False
 
 
 def _public_payload(output: Any) -> dict[str, Any]:
@@ -200,7 +201,7 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         event = IncidentDetector().detect(observation)
         if event is None:
             return JSONResponse(status_code=409, content={'status': 'injection_pending', 'message': 'The cluster accepted the controlled change but has not reported a health violation yet.', 'observation': observation.model_dump(mode='json')})
-        incident = Incident(description=event.description, source='kubernetes', service=event.workload, observation=observation)
+        incident = Incident(description=event.description, source='kubernetes', service=event.workload, observation=observation, remediation_requested=payload.auto_remediate)
         return await _detected_job(request, incident, event)
 
     @app.post('/api/incidents/analyze')
@@ -243,6 +244,23 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         except JobNotFoundError:
             return JSONResponse(status_code=404, content={'error': {'code': 'JOB_NOT_FOUND', 'message': 'The investigation job was not found.', 'retryable': False}})
         return _public_event(await request.app.state.coordinator.public_status(record))
+
+    @app.post('/api/incidents/analyze/jobs/{job_id}/approve', status_code=202, response_model=None)
+    async def approve_remediation(job_id: UUID, request: Request) -> dict[str, Any] | JSONResponse:
+        try:
+            record = await request.app.state.coordinator.store.get(job_id)
+        except JobNotFoundError:
+            return JSONResponse(status_code=404, content={'error': {'code': 'JOB_NOT_FOUND', 'message': 'The investigation job was not found.', 'retryable': False}})
+        if record.status != 'complete' or record.incident is None or record.incident.observation is None:
+            return JSONResponse(status_code=409, content={'error': {'code': 'APPROVAL_NOT_AVAILABLE', 'message': 'Only a completed Kubernetes investigation can be approved.', 'retryable': False}})
+        approved = record.incident.model_copy(update={'remediation_requested': True})
+        try:
+            follow_up, _ = await request.app.state.coordinator.submit(approved.description, None, approved)
+        except QueueFullError:
+            return JSONResponse(status_code=429, content={'error': {'code': 'QUEUE_FULL', 'message': 'One investigation is running and the bounded queue is full.', 'retryable': True}})
+        payload = await request.app.state.coordinator.public_status(follow_up)
+        payload['approved_from_job_id'] = str(job_id)
+        return payload
 
     @app.delete('/api/incidents/analyze/jobs/{job_id}')
     async def cancel_job(job_id: UUID, request: Request) -> dict[str, Any]:

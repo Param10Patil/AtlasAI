@@ -18,6 +18,7 @@ class WorkflowState(TypedDict, total=False):
     request_id: UUID
     original_incident: str
     observation: ClusterObservation
+    remediation_enabled: bool
     triage_result: TriageResult
     evidence: EvidenceBundle
     resolution: AnalysisResult
