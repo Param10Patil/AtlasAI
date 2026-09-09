@@ -213,7 +213,8 @@
       if (!['starting', 'queued'].includes(state.phase)) return null;
       transition('queued');
       const position = Number.isInteger(event.position) && event.position > 0 ? event.position : null;
-      setProgress('Queued', 'Your investigation is waiting for capacity.', position ? `Your investigation is in the queue. Position ${position}.` : 'Your investigation is waiting for capacity.', 'The request will start automatically when the active review finishes.');
+      const queueMessage = position === 1 ? "Another investigation is running. You're next in queue." : position ? `Your investigation is in the queue. Position ${position}.` : 'Your investigation is waiting for capacity.';
+      setProgress('Queued', 'Your investigation is waiting for capacity.', queueMessage, 'The request will start automatically when the active review finishes.');
     } else if (status === 'running') {
       if (!['starting', 'queued', 'running'].includes(state.phase)) return null;
       transition('running');
