@@ -1,6 +1,6 @@
 substitutions:
   _REGION: us-central1
-  _REPOSITORY: opspilot
+  _REPOSITORY: atlasai
   _IMAGE_TAG: manual
 steps:
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -23,7 +23,7 @@ steps:
     args:
       - run
       - deploy
-      - opspilot
+      - atlasai
       - --image
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/opspilot:${_IMAGE_TAG}'
       - --region

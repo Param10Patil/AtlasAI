@@ -27,3 +27,11 @@ opspilot-verification.tar
 # Local model exports (never commit downloaded weights)
 opspilot-lora.zip
 opspilot-lora/
+_edge-atlasai
+_edge-atlasai2
+_edge-profile
+_edge-profile3
+_edge-profile4
+_edge-*/
+assets/opspilot-*.png
+assets/*-mobile.png

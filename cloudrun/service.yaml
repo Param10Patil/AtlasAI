@@ -1,7 +1,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: opspilot
+  name: atlasai
 spec:
   template:
     metadata:
@@ -16,7 +16,7 @@ spec:
       containerConcurrency: 8
       timeoutSeconds: 300
       containers:
-        - image: REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/opspilot:COMMIT_SHA
+        - image: REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/atlasai:COMMIT_SHA
           ports:
             - containerPort: 8080
           env:

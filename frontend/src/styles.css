@@ -278,6 +278,7 @@ code { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Consolas
 .mobile-menu { display: none; border: 0; background: transparent; color: var(--muted); }
 .page-shell { width: min(calc(100% - 64px), 1160px); max-width: 100%; min-height: calc(100dvh - 72px); margin: 0 auto; padding: 55px 0 78px; overflow-x: clip; }
 .page-content { min-width: 0; }
+.page-content > *, .page-intro > div, .health-hero-head > div, .topbar-inner > * { min-width: 0; }
 .page-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 25px; margin-bottom: 31px; }
 .page-intro h1 { max-width: none; margin: 8px 0 10px; font-size: clamp(33px, 4.2vw, 53px); }
 .page-lede { max-width: 67ch; margin: 0; color: var(--muted); font-size: 14px; }
@@ -304,6 +305,7 @@ code { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Consolas
   .topbar-inner, .app-shell, .app-footer { width: min(100% - 24px, var(--content)); }
   .brand small { display: none; }
   .topbar-status { font-size: 9px; }
+  .ai-status { display: none; }
   .example-row { align-items: stretch; flex-direction: column; }
   .example-row > span { margin: 0; }
   .example-row button { width: 100%; }

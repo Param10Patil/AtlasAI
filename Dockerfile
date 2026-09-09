@@ -4,10 +4,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN addgroup --system opspilot && adduser --system --ingroup opspilot opspilot
-COPY --chown=opspilot:opspilot app ./app
-COPY --chown=opspilot:opspilot static ./static
-COPY --chown=opspilot:opspilot knowledge ./knowledge
-USER opspilot
+RUN addgroup --system atlasai && adduser --system --ingroup atlasai atlasai
+COPY --chown=atlasai:atlasai app ./app
+COPY --chown=atlasai:atlasai static ./static
+COPY --chown=atlasai:atlasai knowledge ./knowledge
+USER atlasai
 EXPOSE 8080
 CMD ["python", "-m", "app.run"]

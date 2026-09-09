@@ -1,0 +1,7 @@
+{
+  "framework": "vite",
+  "installCommand": "npm --prefix frontend ci",
+  "buildCommand": "npm --prefix frontend run build",
+  "outputDirectory": "static",
+  "cleanUrls": true
+}

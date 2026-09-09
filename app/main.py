@@ -2,12 +2,14 @@
 
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -116,7 +118,16 @@ def create_app(runtime: ApplicationRuntime | None = None) -> FastAPI:
         )
         yield
 
-    app = FastAPI(title='OpsPilot', version=__version__, lifespan=lifespan)
+    app = FastAPI(title='AtlasAI', version=__version__, lifespan=lifespan)
+    cors_origins = [origin.strip() for origin in os.getenv('OPSPILOT_CORS_ORIGINS', os.getenv('CORS_ORIGINS', '')).split(',') if origin.strip()]
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=False,
+            allow_methods=['GET', 'POST', 'DELETE', 'OPTIONS'],
+            allow_headers=['Content-Type'],
+        )
     static_dir = Path(__file__).resolve().parents[1] / 'static'
     if static_dir.exists():
         app.mount('/static', StaticFiles(directory=static_dir), name='static')
