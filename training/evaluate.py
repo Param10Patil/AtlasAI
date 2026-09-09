@@ -142,10 +142,28 @@ def _prediction_label(raw: Any, labels: list[str]) -> tuple[str, float]:
 def evaluate(adapter: Path, dataset: Path) -> dict[str, object]:
     validated = validate_artifact(adapter, dataset)
     try:
-        from transformers import pipeline
+        from peft import PeftModel
+        from transformers import (
+            AutoModelForSequenceClassification,
+            AutoTokenizer,
+            pipeline,
+        )
     except ImportError as exc:
         raise RuntimeError('install the pinned training/requirements.txt to evaluate an artifact') from exc
-    classifier = pipeline('text-classification', model=str(adapter), top_k=1)
+    metadata = validated['metadata']
+    labels = list(LABELS)
+    base = AutoModelForSequenceClassification.from_pretrained(
+        metadata['base_model'],
+        num_labels=len(labels),
+        id2label={index: label for index, label in enumerate(labels)},
+        label2id={label: index for index, label in enumerate(labels)},
+    )
+    if validated['mode'] == 'lora':
+        model = PeftModel.from_pretrained(base, str(adapter)).merge_and_unload()
+    else:
+        model = AutoModelForSequenceClassification.from_pretrained(str(adapter))
+    tokenizer = AutoTokenizer.from_pretrained(str(adapter), use_fast=False)
+    classifier = pipeline('text-classification', model=model, tokenizer=tokenizer, top_k=1)
     expected: list[str] = []
     predicted: list[str] = []
     for line_number, line in enumerate(dataset.read_text(encoding='utf-8').splitlines(), 1):

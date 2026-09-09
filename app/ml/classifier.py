@@ -113,10 +113,30 @@ class LoRAClassifier:
 
     def _load(self) -> None:
         try:
-            from transformers import pipeline
-            self._pipeline = pipeline('text-classification', model=str(self.adapter_path), top_k=1)
+            from peft import PeftModel
+            from transformers import (
+                AutoModelForSequenceClassification,
+                AutoTokenizer,
+                pipeline,
+            )
+            labels = {index: label for index, label in enumerate(LABELS)}
+            label_to_id = {label: index for index, label in enumerate(LABELS)}
+            base_model = self.artifact['metadata']['base_model']
+            base = AutoModelForSequenceClassification.from_pretrained(
+                base_model,
+                num_labels=len(LABELS),
+                id2label=labels,
+                label2id=label_to_id,
+            )
+            # A PEFT directory is an adapter, not a complete Transformers
+            # model. Attach it to the recorded base model before inference;
+            # passing the directory directly silently reinitializes the
+            # classifier head and produces misleading predictions.
+            model = PeftModel.from_pretrained(base, str(self.adapter_path)).merge_and_unload()
+            tokenizer = AutoTokenizer.from_pretrained(str(self.adapter_path), use_fast=False)
+            self._pipeline = pipeline('text-classification', model=model, tokenizer=tokenizer, top_k=1)
         except ImportError as exc:
-            raise RuntimeError('transformers is not installed for LoRA inference') from exc
+            raise RuntimeError('transformers and peft are required for LoRA inference') from exc
 
     def classify(self, description: str) -> Classification:
         try:
@@ -139,7 +159,7 @@ class LoRAClassifier:
             if label not in LABELS:
                 raise RuntimeError('LoRA pipeline returned an unknown label')
             return Classification(label, score, 'lora', ())
-        except (RuntimeError, ValueError, TypeError, IndexError):
+        except (OSError, RuntimeError, ValueError, TypeError, IndexError):
             return self._fallback.classify(description)
 
 

@@ -161,7 +161,10 @@ def _load_tokenizer(base_model: str) -> Any:
 
 def _target_modules(model: Any) -> list[str]:
     names = {name.rsplit('.', 1)[-1] for name, _ in model.named_modules()}
-    selected = [name for name in ('query', 'value') if name in names]
+    # Adapt all attention projections available in the base model.  The
+    # previous query/value-only adapter was too constrained for this tiny,
+    # six-class dataset and mostly learned the majority prediction.
+    selected = [name for name in ('query', 'key', 'value', 'dense') if name in names]
     if not selected:
         raise RuntimeError(f'could not discover query/value attention modules; found={sorted(names)[:20]}')
     return selected
@@ -429,9 +432,12 @@ def train(
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
         learning_rate=learning_rate,
-        lr_scheduler_type='linear',
-        warmup_ratio=0.1,
-        weight_decay=0.01,
+        # A long warm-up plus linear decay leaves only a handful of useful
+        # updates for a 96-row dataset.  Constant LR is deliberate here:
+        # early stopping still selects the best validation checkpoint.
+        lr_scheduler_type='constant',
+        warmup_ratio=0.0,
+        weight_decay=0.0,
         seed=seed,
         data_seed=seed,
         evaluation_strategy='epoch',
@@ -481,9 +487,9 @@ def train(
         'batch_size': batch_size,
         'epochs': epochs,
         'learning_rate': learning_rate,
-        'scheduler': 'linear',
-        'warmup_ratio': 0.1,
-        'weight_decay': 0.01,
+        'scheduler': 'constant',
+        'warmup_ratio': 0.0,
+        'weight_decay': 0.0,
         'early_stopping_patience': early_stopping_patience,
         'lora': {'r': 8, 'alpha': 16, 'dropout': 0.1, 'target_modules': targets} if mode == 'lora' else None,
     }
@@ -571,7 +577,7 @@ def main() -> int:
     parser.add_argument('--output-dir', type=Path, default=root / 'training/artifacts/opspilot-lora')
     parser.add_argument('--base-model', default=DEFAULT_BASE_MODEL)
     parser.add_argument('--mode', choices=('lora', 'full', 'both'), default='lora')
-    parser.add_argument('--epochs', type=float, default=8.0)
+    parser.add_argument('--epochs', type=float, default=30.0)
     parser.add_argument('--batch-size', type=int, default=8)
     parser.add_argument('--learning-rate', type=float, default=None)
     parser.add_argument('--seed', type=int, default=42)
@@ -587,7 +593,7 @@ def main() -> int:
     results: dict[str, Any] = {}
     try:
         for mode in modes:
-            learning_rate = args.learning_rate if args.learning_rate is not None else (5e-5 if mode == 'lora' else 2e-5)
+            learning_rate = args.learning_rate if args.learning_rate is not None else 5e-4
             output_dir = args.output_dir / mode if args.mode == 'both' else args.output_dir
             results[mode] = train(args.dataset, output_dir, args.base_model, args.epochs, args.batch_size, learning_rate, args.tracking_uri, args.seed, args.validation_fraction, args.max_length, mode=mode, early_stopping_patience=args.early_stopping_patience, run_overfit=args.run_overfit_test)
         if args.mode == 'both':
