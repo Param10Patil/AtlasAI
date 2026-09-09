@@ -10,7 +10,6 @@ generative LLM and never changes the web runtime.
 !rm -rf /content/AtlasAI
 !git clone --depth 1 https://github.com/Param10Patil/AtlasAI.git /content/AtlasAI
 %cd /content/AtlasAI
-!python -m pip install --upgrade pip
 !python -m pip install -r training/requirements.txt
 ```
 
