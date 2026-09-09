@@ -1,0 +1,13 @@
+# Python 3.11 Colab training environment. This deliberately uses the CPU
+# Torch wheel so the small bert-tiny experiment does not download the large
+# CUDA runtime bundle. The notebook kernel may remain Python 3.13; commands
+# are executed explicitly with the isolated 3.11 interpreter.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.3.1+cpu
+transformers==4.43.3
+peft==0.12.0
+datasets==2.20.0
+accelerate==0.33.0
+numpy==1.26.4
+safetensors==0.4.3
+tokenizers==0.19.1

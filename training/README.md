@@ -7,7 +7,8 @@ MLflow when available, and exports an adapter version. The API treats a missing
 adapter as a declared rule-based fallback; it never trains during startup.
 
 The runtime image must not install training dependencies, model weights, or
-MLflow. `COLAB.md` contains the exact CPU/Colab command; it runs both the LoRA
+MLflow. `COLAB.md` contains the exact CPU/Colab command; it creates an isolated
+Python 3.11 interpreter with the mutually compatible CPU stack, runs both the LoRA
 and full-fine-tune baseline, performs a balanced tiny overfit diagnostic, and
 then validates each artifact. `dataset/DATASET.md` records provenance, while
 `docs/lora.md`, `docs/mlflow.md`, and `docs/development-notes.md` describe the

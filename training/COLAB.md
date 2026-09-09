@@ -4,19 +4,24 @@ This exact notebook flow creates a PEFT/LoRA incident classifier and a
 validated zip that the AtlasAI runtime can load. It does not train a
 generative LLM and never changes the web runtime.
 
-## 1. Clone and install
+## 1. Clone and install an isolated Python 3.11 runtime
 
 ```python
 !rm -rf /content/AtlasAI
 !git clone --depth 1 https://github.com/Param10Patil/AtlasAI.git /content/AtlasAI
 %cd /content/AtlasAI
-!python -m pip install -r training/requirements.txt
+!python -m pip install -q uv
+!uv python install 3.11
+!uv venv --seed /content/atlasai-py311 --python 3.11
+!/content/atlasai-py311/bin/python -m pip install --prefer-binary -r training/requirements-py311-colab.txt
+!/content/atlasai-py311/bin/python -c "import sys, torch, transformers, accelerate, numpy; print(sys.version); print(torch.__version__, transformers.__version__, accelerate.__version__, numpy.__version__)"
 ```
 
-The requirements select wheel-backed Torch 2.5.0, Transformers 4.46.3,
-Accelerate 1.10.1, NumPy 2.1.3, tokenizers 0.20.3, and safetensors 0.4.4 for Colab's current
-Python 3.13 image. Pip therefore does not compile the older Python 3.11
-source-package versions.
+This leaves Colab's notebook kernel unchanged but forces every training,
+evaluation, and prediction command below through Python 3.11. The pinned CPU
+stack is the one verified locally and has no dependency conflict. It is
+deliberately faster to download than a CUDA-enabled Torch bundle for this
+small model; a Colab GPU is not required.
 
 For higher Hugging Face Hub rate limits, add a Colab secret named `HF_TOKEN`
 and run this optional cell. Public model downloads work without it; the
@@ -44,7 +49,7 @@ token in a notebook. A free GPU is optional: `prajjwal1/bert-tiny` and the
 
 ```python
 !rm -rf training/artifacts/opspilot-comparison
-!python training/train_lora.py --dataset training/dataset/incidents.jsonl --output-dir training/artifacts/opspilot-comparison --base-model prajjwal1/bert-tiny --mode both --run-overfit-test --epochs 8 --batch-size 8 --validation-fraction 0.2 --max-length 128 --seed 42
+!/content/atlasai-py311/bin/python training/train_lora.py --dataset training/dataset/incidents.jsonl --output-dir training/artifacts/opspilot-comparison --base-model prajjwal1/bert-tiny --mode both --run-overfit-test --epochs 8 --batch-size 8 --validation-fraction 0.2 --max-length 128 --seed 42
 ```
 
 The default learning rates are 5e-5 for LoRA and 2e-5 for the full baseline.
@@ -56,8 +61,8 @@ Treat these as educational offline measurements, not production accuracy.
 ## 3. Evaluate and validate the artifact
 
 ```python
-!python training/evaluate.py training/artifacts/opspilot-comparison/lora --dataset training/dataset/incidents.jsonl | tee /content/opspilot-lora-evaluation.json
-!python training/evaluate.py training/artifacts/opspilot-comparison/full --dataset training/dataset/incidents.jsonl | tee /content/opspilot-full-evaluation.json
+!/content/atlasai-py311/bin/python training/evaluate.py training/artifacts/opspilot-comparison/lora --dataset training/dataset/incidents.jsonl | tee /content/opspilot-lora-evaluation.json
+!/content/atlasai-py311/bin/python training/evaluate.py training/artifacts/opspilot-comparison/full --dataset training/dataset/incidents.jsonl | tee /content/opspilot-full-evaluation.json
 ```
 
 Then run this machine-readable gate:
