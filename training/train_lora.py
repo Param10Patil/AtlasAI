@@ -145,6 +145,20 @@ def _token_length_stats(tokenizer: Any, rows: list[dict[str, str]], max_length: 
     }
 
 
+def _load_tokenizer(base_model: str) -> Any:
+    """Load a tokenizer even when a model card has no fast-tokenizer file."""
+    from transformers import AutoTokenizer, BertTokenizer
+
+    try:
+        # The slow path is deliberate: bert-tiny ships vocab.txt but not a
+        # tokenizer.json, and it does not require sentencepiece/tiktoken.
+        return AutoTokenizer.from_pretrained(base_model, use_fast=False)
+    except (OSError, ValueError, TypeError):
+        if base_model != DEFAULT_BASE_MODEL:
+            raise
+        return BertTokenizer.from_pretrained(base_model)
+
+
 def _target_modules(model: Any) -> list[str]:
     names = {name.rsplit('.', 1)[-1] for name, _ in model.named_modules()}
     selected = [name for name in ('query', 'value') if name in names]
@@ -252,14 +266,26 @@ def _trainer_metrics(eval_pred: Any) -> dict[str, float]:
 
 def _build_model(base_model: str, mode: str) -> tuple[Any, list[str]]:
     from peft import LoraConfig, TaskType, get_peft_model
-    from transformers import AutoModelForSequenceClassification
-
-    model = AutoModelForSequenceClassification.from_pretrained(
-        base_model,
-        num_labels=len(LABELS),
-        id2label={index: label for index, label in enumerate(LABELS)},
-        label2id={label: index for index, label in enumerate(LABELS)},
+    from transformers import (
+        AutoModelForSequenceClassification,
+        BertConfig,
+        BertForSequenceClassification,
     )
+
+    label_config = {
+        'num_labels': len(LABELS),
+        'id2label': {index: label for index, label in enumerate(LABELS)},
+        'label2id': {label: index for index, label in enumerate(LABELS)},
+    }
+    try:
+        model = AutoModelForSequenceClassification.from_pretrained(base_model, **label_config)
+    except (OSError, ValueError, KeyError):
+        if base_model != DEFAULT_BASE_MODEL:
+            raise
+        # The tiny model's legacy config omits model_type. Explicit BERT
+        # loading keeps newer Transformers releases deterministic.
+        config = BertConfig.from_pretrained(base_model, **label_config)
+        model = BertForSequenceClassification.from_pretrained(base_model, config=config)
     targets: list[str] = []
     if mode == 'lora':
         targets = _target_modules(model)
@@ -366,7 +392,6 @@ def train(
     try:
         from datasets import Dataset
         from transformers import (
-            AutoTokenizer,
             EarlyStoppingCallback,
             Trainer,
             TrainingArguments,
@@ -383,7 +408,7 @@ def train(
     rows, dataset_diagnostics = _load_rows(dataset_path)
     train_rows, validation_rows = _stratified_split(rows, validation_fraction, seed)
     label_to_id = {label: index for index, label in enumerate(LABELS)}
-    tokenizer = AutoTokenizer.from_pretrained(base_model)
+    tokenizer = _load_tokenizer(base_model)
     token_stats = _token_length_stats(tokenizer, rows, max_length)
     train_dataset = Dataset.from_list([{'text': row['text'], 'label': label_to_id[row['label']]} for row in train_rows])
     validation_dataset = Dataset.from_list([{'text': row['text'], 'label': label_to_id[row['label']]} for row in validation_rows])

@@ -1,11 +1,14 @@
 # Optional training environment; never install this in the runtime image.
-# This exact set was selected for Python 3.11 CPU/Colab compatibility on
-# 2026-09-08. Keep it separate from the small runtime image.
-torch==2.3.1
+# Python 3.11 uses the locally verified torch build. Current Colab images are
+# Python 3.12+ and no longer publish a compatible torch 2.3.1 wheel, so use the
+# first compatible pinned build there. Keep this separate from the runtime.
+torch==2.3.1; python_version < "3.12"
+torch==2.5.0; python_version >= "3.12"
 transformers==4.43.3
 peft==0.12.0
 datasets==2.20.0
 accelerate==0.33.0
 numpy==1.26.4
 safetensors==0.4.3
-mlflow==2.15.1
+tokenizers==0.19.1
+sentencepiece==0.2.0

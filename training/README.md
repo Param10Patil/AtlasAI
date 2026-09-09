@@ -21,6 +21,8 @@ python training/train_lora.py --mode both --run-overfit-test --epochs 8 --batch-
 python training/evaluate.py E:\\AtlasAI-training-runs\\comparison\\lora --dataset training/dataset/incidents.jsonl
 ```
 
-The generated weights stay outside Git. Install only a reviewed adapter and
+Install `training/requirements-mlflow.txt` only when local MLflow tracking is
+needed; it layers on top of the core training requirements. The generated
+weights stay outside Git. Install only a reviewed adapter and
 set `OPSPILOT_LORA_ADAPTER_PATH`; runtime startup validates its label map,
 dataset/model checksums, and manifest before importing Transformers.
