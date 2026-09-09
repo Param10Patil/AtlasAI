@@ -9,3 +9,7 @@ build/
 training/artifacts/
 mlruns/
 docs/
+
+# Local model exports (never commit downloaded weights)
+opspilot-lora.zip
+opspilot-lora/

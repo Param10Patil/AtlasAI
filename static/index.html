@@ -1,41 +1,200 @@
 <!doctype html>
-<html lang='en'>
+<html lang="en">
   <head>
-    <meta charset='utf-8' />
-    <meta name='viewport' content='width=device-width, initial-scale=1' />
-    <meta name='description' content='Evidence-aware AI incident investigation assistant' />
-    <title>OpsPilot - Incident investigation</title>
-    <link rel='stylesheet' href='/static/styles.css' />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Evidence-aware AI incident investigation assistant" />
+    <title>OpsPilot | Incident investigation</title>
+    <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <header class='topbar'>
-      <a class='brand' href='/' aria-label='OpsPilot home'><span class='brand-mark'>O</span><span>OpsPilot</span></a>
-      <span class='topbar-note'>Incident investigation assistant</span>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="/" aria-label="OpsPilot home">
+          <span class="brand-mark" aria-hidden="true">OP</span>
+          <span class="brand-name">OpsPilot</span>
+        </a>
+        <p class="topbar-note">AI incident investigation assistant</p>
+      </div>
     </header>
-    <main class='shell'>
-      <section class='intro' aria-labelledby='page-title'>
-        <p class='eyebrow'>CALM, EVIDENCE-AWARE TRIAGE</p>
-        <h1 id='page-title'>Understand what went wrong.</h1>
-        <p class='lede'>Describe a software incident in plain language. OpsPilot organizes the signal, checks relevant knowledge, and returns a cautious next step.</p>
+
+    <main class="shell">
+      <section class="intro" aria-labelledby="page-title">
+        <div class="eyebrow-row">
+          <p class="eyebrow">CONTROLLED INCIDENT REVIEW</p>
+          <span class="eyebrow-line" aria-hidden="true"></span>
+        </div>
+        <h1 id="page-title">Clarity when systems drift.</h1>
+        <p class="lede">Describe a production signal and OpsPilot will organize the investigation, ground it in evidence, and suggest a cautious next step.</p>
+        <div class="capability-row" aria-label="Investigation stages">
+          <span class="capability" data-tooltip="Classifies the incident into a bounded operational category" title="Classifies the incident">
+            <span class="capability-number">01</span> Classify
+          </span>
+          <span class="capability" data-tooltip="Checks runbooks, history, and connected MCP tools" title="Checks evidence">
+            <span class="capability-number">02</span> Investigate
+          </span>
+          <span class="capability" data-tooltip="Ranks a safe, evidence-backed next step" title="Ranks a next step">
+            <span class="capability-number">03</span> Recommend
+          </span>
+        </div>
       </section>
-      <section class='card form-card' aria-labelledby='form-title'>
-        <div class='section-heading'><div><p class='kicker'>START AN INVESTIGATION</p><h2 id='form-title'>What happened?</h2></div><span class='limit'>Up to 4,000 characters</span></div>
-        <form id='incident-form' novalidate>
-          <label class='field-label input-label' for='incident-description'>Incident description</label>
-          <textarea id='incident-description' name='description' maxlength='4000' placeholder='Our payment API started returning 503 errors after today&apos;s deployment.' required></textarea>
-          <div class='form-footer'><p id='input-hint' class='input-hint'>Include the service, symptom, and what changed if you know them.</p><output id='character-count' class='character-count' aria-live='polite'>0 / 4,000</output><button id='submit-button' type='submit'><span>Analyze incident</span><span aria-hidden='true'>→</span></button></div>
+
+      <section class="card composer-card" aria-labelledby="form-title">
+        <div class="section-heading">
+          <div>
+            <p class="kicker">START AN INVESTIGATION</p>
+            <h2 id="form-title">Describe what went wrong</h2>
+          </div>
+          <span class="section-note">A focused signal is easier to verify</span>
+        </div>
+
+        <form id="incident-form" novalidate>
+          <div class="label-row">
+            <label class="field-label input-label" for="incident-description">Incident description</label>
+            <span class="field-note" data-tooltip="Mention the service, symptom, and what changed if you know them" title="What makes a useful description">Service + symptom + change</span>
+          </div>
+          <textarea id="incident-description" name="description" maxlength="4000" aria-describedby="input-hint character-count validation-message" placeholder="Example: The checkout API started returning 503 errors after today's deployment." required></textarea>
+          <div class="field-meta">
+            <p id="input-hint" class="input-hint">Include the service, symptom, and what changed if you know them.</p>
+            <output id="character-count" class="character-count" for="incident-description" aria-live="polite">0 / 4,000</output>
+          </div>
+          <p id="validation-message" class="validation-message" role="alert" hidden></p>
+          <div class="action-row">
+            <p class="trust-note"><span class="trust-icon" aria-hidden="true">i</span> Advisory only. Every action is checked before it can run.</p>
+            <button id="submit-button" class="primary-button" type="submit">
+              <span class="button-label">Analyze incident</span>
+              <span class="button-arrow" aria-hidden="true">&rarr;</span>
+            </button>
+          </div>
         </form>
-        <div class='examples' aria-label='Example incidents'><span>Try an example</span><button type='button' data-example='Our payment API started returning 503 errors after today&apos;s deployment.'>API 503</button><button type='button' data-example='Database connections are exhausted and checkout requests are timing out.'>Database failure</button><button type='button' data-example='Our API p95 latency doubled after the latest release.'>High latency</button></div>
+
+        <div class="examples" aria-label="Example incidents">
+          <span class="examples-label">Try a signal</span>
+          <button type="button" data-example="Our payment API started returning 503 errors after today's deployment." title="Populate an API availability example">API availability</button>
+          <button type="button" data-example="Database connections are exhausted and checkout requests are timing out." title="Populate a database example">Database pressure</button>
+          <button type="button" data-example="Our API p95 latency doubled after the latest release." title="Populate a performance example">High latency</button>
+        </div>
       </section>
-      <section id='progress-panel' class='card progress-card' hidden aria-live='polite' aria-busy='false'><span class='spinner' aria-hidden='true'></span><div><p class='kicker'>INVESTIGATION IN PROGRESS</p><h2>OpsPilot is reviewing the incident</h2><p id='progress-message'>Checking the incident details and relevant evidence.</p><button id='cancel-analysis' class='secondary-button' type='button'>Cancel</button></div></section>
-      <section id='error-panel' class='card error-card' hidden role='alert'><div class='status-icon'>!</div><div><p class='kicker'>INVESTIGATION PAUSED</p><h2>We could not complete the investigation.</h2><p id='error-message'>Please try again.</p><button id='retry-button' class='secondary-button' type='button'>Try again</button></div></section>
-      <section id='result-panel' class='result-stack' hidden aria-labelledby='result-title'>
-        <div class='result-header'><div><p class='kicker'>INCIDENT ANALYSIS</p><h2 id='result-title'>Analysis result</h2></div><span id='severity-badge' class='severity-badge'></span></div>
-        <div class='card result-card'><div class='result-grid'><div class='result-main'><p class='field-label'>LIKELY CAUSE</p><p id='cause-text' class='cause-text'></p><p class='field-label action-label'>RECOMMENDED ACTION</p><p id='action-text' class='action-text'></p></div><div class='confidence'><span class='field-label'>CONFIDENCE</span><strong id='confidence-value'></strong><span id='evidence-count' class='evidence-count'></span></div></div><div class='result-footer'><p id='limitation-text' class='limitation'></p><button id='new-analysis' class='secondary-button' type='button'>New analysis</button></div></div>
-        <details class='card details-card'><summary>View investigation details <span aria-hidden='true'>↓</span></summary><div class='details-body'><div><h3>Investigation flow</h3><ul id='steps-list' class='steps-list'></ul></div><div><h3>Evidence</h3><p id='knowledge-summary' class='detail-summary'></p><ul id='evidence-list' class='evidence-list'></ul></div><div class='detail-columns'><div><h3>MCP tools</h3><ul id='tools-list' class='status-list'></ul></div><div><h3>Model and safety</h3><ul id='model-list' class='status-list'></ul></div><div><h3>Remediation</h3><ul id='remediation-list' class='status-list'></ul></div></div></div></details>
+
+      <section id="progress-panel" class="card progress-card" hidden aria-live="polite" aria-busy="false" aria-labelledby="progress-title">
+        <div class="progress-mark" aria-hidden="true">
+          <span class="progress-ring"></span>
+          <span class="progress-core"></span>
+        </div>
+        <div class="progress-content">
+          <div class="state-line">
+            <p class="kicker">LIVE INVESTIGATION</p>
+            <span id="progress-state" class="state-pill">Starting</span>
+          </div>
+          <h2 id="progress-title">OpsPilot is preparing the review</h2>
+          <p id="progress-message" class="progress-message" role="status">Connecting to the analysis service.</p>
+          <p id="progress-job" class="progress-job">A bounded analysis slot is reserved for this request.</p>
+          <button id="cancel-analysis" class="text-button" type="button">Cancel request</button>
+        </div>
       </section>
+
+      <section id="error-panel" class="card error-card" hidden role="alert" aria-labelledby="error-title">
+        <div class="error-mark" aria-hidden="true">!</div>
+        <div class="error-content">
+          <p class="kicker">INVESTIGATION PAUSED</p>
+          <h2 id="error-title">We could not complete this review.</h2>
+          <p id="error-message" class="error-message">OpsPilot could not complete this investigation. Try again.</p>
+          <div class="error-actions">
+            <button id="retry-button" class="secondary-button" type="button" hidden>Try again</button>
+            <button id="new-analysis-error" class="text-button" type="button">New analysis</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="result-panel" class="result-stack" hidden aria-labelledby="result-title">
+        <div class="result-header">
+          <div>
+            <p class="kicker">INCIDENT ANALYSIS</p>
+            <h2 id="result-title" tabindex="-1">Analysis result</h2>
+          </div>
+          <span id="severity-badge" class="severity-badge" data-tooltip="Severity is a signal for prioritization, not a diagnosis" title="Severity signal"></span>
+        </div>
+
+        <div class="card result-card">
+          <div class="summary-head">
+            <div>
+              <p class="field-label">PROBABLE ROOT CAUSE</p>
+              <p id="cause-text" class="cause-text">No likely cause was isolated.</p>
+            </div>
+            <div class="confidence-block" data-tooltip="Confidence reflects the available evidence and model agreement" title="How confidence is calculated">
+              <span class="field-label">CONFIDENCE</span>
+              <strong id="confidence-value">--</strong>
+              <div class="confidence-track" aria-hidden="true"><span id="confidence-bar"></span></div>
+              <span id="confidence-detail" class="confidence-detail">Awaiting analysis</span>
+            </div>
+          </div>
+
+          <div class="summary-grid">
+            <div class="summary-column">
+              <div class="column-heading">
+                <span class="section-icon" aria-hidden="true">C</span>
+                <h3>Signals behind the diagnosis</h3>
+              </div>
+              <ul id="causes-list" class="cause-list"></ul>
+            </div>
+            <div class="summary-column action-column">
+              <div class="column-heading">
+                <span class="section-icon" aria-hidden="true">N</span>
+                <h3>Recommended next step</h3>
+              </div>
+              <p id="action-text" class="action-text">Collect more evidence and review the incident with an operator.</p>
+              <ol id="actions-list" class="action-list"></ol>
+            </div>
+          </div>
+
+          <div class="metric-row">
+            <div class="metric" data-tooltip="Count of bounded runbook and historical sources selected for this review" title="Selected evidence count">
+              <span class="metric-label">Evidence selected</span>
+              <strong id="evidence-count">0 sources</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Review posture</span>
+              <strong id="review-posture">Evidence-aware</strong>
+            </div>
+            <div class="metric metric-wide">
+              <span class="metric-label">Important limitation</span>
+              <span id="limitation-text" class="limitation">No additional limitation reported.</span>
+            </div>
+          </div>
+
+          <div class="result-footer">
+            <p class="result-note"><span class="result-note-dot" aria-hidden="true"></span> Verify the evidence before changing a live system.</p>
+            <button id="new-analysis" class="secondary-button" type="button">New analysis</button>
+          </div>
+        </div>
+
+        <details class="card details-card">
+          <summary>View investigation details <span class="summary-hint">Flow, evidence, tools, and safety <span aria-hidden="true">&darr;</span></span></summary>
+          <div class="details-body">
+            <div class="detail-section">
+              <div class="column-heading"><span class="section-icon" aria-hidden="true">01</span><h3>Investigation flow</h3></div>
+              <ol id="steps-list" class="steps-list"></ol>
+            </div>
+            <div class="detail-section">
+              <div class="column-heading"><span class="section-icon" aria-hidden="true">02</span><h3>Knowledge signal</h3></div>
+              <p id="knowledge-summary" class="detail-summary">No knowledge sources reported.</p>
+              <ul id="evidence-list" class="evidence-list"></ul>
+            </div>
+            <div class="detail-columns">
+              <div class="detail-section"><div class="column-heading"><span class="section-icon" aria-hidden="true">03</span><h3>MCP tools</h3></div><ul id="tools-list" class="status-list"></ul></div>
+              <div class="detail-section"><div class="column-heading"><span class="section-icon" aria-hidden="true">04</span><h3>Models</h3></div><ul id="model-list" class="status-list"></ul></div>
+              <div class="detail-section"><div class="column-heading"><span class="section-icon" aria-hidden="true">05</span><h3>Safety gate</h3></div><ul id="remediation-list" class="status-list"></ul></div>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <p id="announcement" class="sr-only" role="status" aria-live="polite"></p>
     </main>
-    <footer class='footer'>OpsPilot offers advisory analysis. Verify evidence and confirm any operational action.</footer>
-    <script src='/static/app.js' defer></script>
+
+    <footer class="footer">
+      <div class="footer-inner"><span>OpsPilot</span><span>Advisory analysis for careful operators</span></div>
+    </footer>
+    <script src="/static/app.js" defer></script>
   </body>
 </html>
