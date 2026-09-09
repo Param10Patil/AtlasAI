@@ -37,3 +37,9 @@ weights stay outside Git. Install only a reviewed adapter and
 set `OPSPILOT_LORA_ADAPTER_PATH`; runtime startup validates its label map,
 metrics, model checksum, and manifest before importing Transformers. The
 offline evaluator additionally checks the canonical dataset checksum.
+
+When `--tracking-uri file:///E:/AtlasAI/mlruns` is supplied, each completed
+run creates `mlflow_run.json` beside the local artifact and logs scalar
+parameters, validation metrics, tags, and the artifact directory to a named
+MLflow experiment. A tracking failure is reported as a warning after local
+metrics are safely written; it is never converted into a false success.

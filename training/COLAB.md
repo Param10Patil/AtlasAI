@@ -129,6 +129,11 @@ metrics and artifacts are written first; a tracking failure is returned as a
 warning and cannot erase them. Never claim MLflow success without inspecting
 the tracking files or UI.
 
+Successful runs also write `mlflow_run.json` next to the artifact. Verify the
+run with `mlflow.search_runs` or `mlflow ui --backend-store-uri
+file:///content/mlruns`; this is local file-backed tracking, not a hosted
+MLflow service.
+
 MLflow is intentionally optional to keep the normal Colab install small. If
 you want local tracking, install it after the successful training dependency
 install with `!/content/atlasai-py311/bin/python -m pip install -r training/requirements-mlflow.txt`.
