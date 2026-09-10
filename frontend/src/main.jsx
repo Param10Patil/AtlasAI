@@ -174,7 +174,10 @@ function eventRelevance(event, value, mode) {
   if (mode !== 'recovery' && recovery) score -= 10;
   const observed = Date.parse(value?.observed_at || '');
   const eventTime = Date.parse(event?.observed_at || event?.last_timestamp || event?.timestamp || '');
-  if (observed && eventTime && Math.abs(observed - eventTime) < 5 * 60 * 1000) score += 10;
+  const recent = observed && eventTime && Math.abs(observed - eventTime) < 5 * 60 * 1000;
+  const stale = observed && eventTime && observed - eventTime > 15 * 60 * 1000;
+  if (recent) score += 10;
+  if (mode === 'current' && value?.health?.status === 'healthy' && stale && critical) score = -5;
   return score;
 }
 
