@@ -198,7 +198,19 @@ function KeySignals({ value }) {
 function EventCards({ value, mode = 'current' }) {
   const allEvents = Array.isArray(value?.events) ? value.events : [];
   const ranked = rankKubernetesEvents(value, mode);
-  const keyEvents = ranked.filter((item) => item.score > 30).slice(0, 4);
+  const recoveryProjection = mode === 'recovery' && value?.health?.status === 'healthy';
+  const keyEvents = ranked.filter((item) => {
+    if (item.score <= 30) return false;
+    if (!recoveryProjection) return true;
+    const priority = textValue(item.event?.priority, 'contextual');
+    const eventTime = Date.parse(item.event?.observed_at || item.event?.last_timestamp || item.event?.timestamp || '');
+    const observed = Date.parse(value?.observed_at || '');
+    const recent = observed && eventTime && Math.abs(observed - eventTime) < 5 * 60 * 1000;
+    return priority === 'recovery_critical' || (recent && priority !== 'incident_critical');
+  }).slice(0, 4);
+  useEffect(() => {
+    document.querySelectorAll('.event-row details[open]').forEach((detail) => { detail.open = false; });
+  }, [value, mode]);
   const row = ({ event, score }, index, technical = false) => {
     const reason = humanize(event.reason, 'Kubernetes event');
     const critical = score >= 100 || textValue(event.event_type || event.type, '').toLowerCase() === 'warning';
