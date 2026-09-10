@@ -25,6 +25,7 @@ class ExecutionPreview(BaseModel):
     target: str = Field(min_length=1, max_length=120)
     namespace: str = Field(min_length=1, max_length=63)
     resource_type: str = Field(min_length=1, max_length=120)
+    why: str = Field(min_length=1, max_length=240)
     operation: str = Field(min_length=1, max_length=400)
     execution_method: str = Field(min_length=1, max_length=160)
     api_method: str = Field(min_length=1, max_length=240)

@@ -102,6 +102,7 @@ class RemediationAgent:
         operation, resource_type, api_method, _ = cls._preview_operations[action]
         namespace = context.observation.namespace if context.observation else target.partition('/')[0] or 'not observed'
         observation = context.observation
+        why = f"{context.category.replace('_', ' ')} selected by the ranked policy plan."
         if observation:
             deployment = observation.deployment
             state = (
@@ -118,6 +119,7 @@ class RemediationAgent:
                     operation = f"Restart the selected unhealthy pod for the approved workload. {state}"
             else:
                 operation = f"{operation} {state}"
+            why = f"{context.category.replace('_', ' ')}; {state}"
         selected_ids = {identifier for item in context.recommended_actions if item.rank == 1 for identifier in item.evidence_ids}
         evidence = [item for item in context.evidence if not selected_ids or item.id in selected_ids][:3]
         commands: list[str] = []
@@ -134,6 +136,7 @@ class RemediationAgent:
             target=target,
             namespace=namespace,
             resource_type=resource_type,
+            why=why,
             operation=operation,
             execution_method='MCP execute_safe_action -> Kubernetes Python client',
             api_method=api_method,
