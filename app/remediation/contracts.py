@@ -5,7 +5,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.kubernetes.contracts import ClusterObservation
-from app.models.schemas import RecommendedAction
+from app.models.schemas import EvidenceItem, RecommendedAction
 
 
 class SafeAction(str, Enum):
@@ -13,6 +13,24 @@ class SafeAction(str, Enum):
     SCALE_DEPLOYMENT = 'scale_deployment'
     ROLLBACK_DEPLOYMENT = 'rollback_deployment'
     CLEAR_TEMPORARY_CONDITION = 'clear_temporary_condition'
+
+
+class ExecutionPreview(BaseModel):
+    """Truthful description of the operation the configured executor will call."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    action: SafeAction
+    category: str = Field(min_length=1, max_length=80)
+    target: str = Field(min_length=1, max_length=120)
+    namespace: str = Field(min_length=1, max_length=63)
+    resource_type: str = Field(min_length=1, max_length=120)
+    operation: str = Field(min_length=1, max_length=400)
+    execution_method: str = Field(min_length=1, max_length=160)
+    api_method: str = Field(min_length=1, max_length=240)
+    rag_evidence: list[EvidenceItem] = Field(default_factory=list, max_length=3)
+    rag_commands: list[str] = Field(default_factory=list, max_length=3)
+    policy_result: str = Field(min_length=1, max_length=240)
 
 
 class RemediationContext(BaseModel):
@@ -24,6 +42,7 @@ class RemediationContext(BaseModel):
     probable_causes: tuple[str, ...] = ()
     evidence_ids: tuple[str, ...] = ()
     recommended_actions: tuple[RecommendedAction, ...] = ()
+    evidence: tuple[EvidenceItem, ...] = ()
     observation: ClusterObservation | None = None
     safety_constraints: tuple[str, ...] = ('Allow only the four safe actions', 'Verify health after execution')
 
@@ -37,6 +56,7 @@ class RemediationResult(BaseModel):
     message: str = Field(min_length=1, max_length=300)
     health_verified: bool = False
     retry_recommended: bool = False
+    execution_preview: ExecutionPreview | None = None
     before_observation: ClusterObservation | None = None
     after_observation: ClusterObservation | None = None
 

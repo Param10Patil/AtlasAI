@@ -67,6 +67,20 @@ def test_observation_signal_is_bounded_and_contains_real_fields():
     assert len(signal) <= 1800
 
 
+def test_service_endpoint_read_is_distinct_from_control_plane_connection():
+    class Core:
+        def read_namespaced_endpoints(self, name, namespace, **kwargs):
+            return SimpleNamespace(subsets=[SimpleNamespace(addresses=[])])
+
+    service = KubernetesService(mode='execute')
+    service._core = Core()
+    service._api_exception = Exception
+    assert service._service_available('ops-demo', 'checkout-api') is False
+    assessed = KubernetesService._assess(_observation(HealthStatus.HEALTHY).deployment, [], False)
+    assert assessed.status is HealthStatus.DEGRADED
+    assert 'service has no ready endpoints' in assessed.reasons
+
+
 def test_health_parser_handles_kubernetes_like_objects():
     deployment = SimpleNamespace(
         metadata=SimpleNamespace(name='checkout-api', annotations={'deployment.kubernetes.io/revision': '2'}),
@@ -123,3 +137,32 @@ def test_rollback_patch_removes_injected_command_when_healthy_revision_had_none(
     assert container['image'] == 'nginx:1.25-alpine'
     assert container['command'] is None
     assert container['readinessProbe'] is None
+
+
+def test_clear_temporary_condition_restores_recorded_template_via_api_patch():
+    deployment = SimpleNamespace(
+        metadata=SimpleNamespace(annotations={
+            'opspilot.io/healthy-image': 'nginx:1.25-alpine',
+            'opspilot.io/healthy-command': 'null',
+            'opspilot.io/healthy-readiness': 'null',
+        }),
+    )
+
+    class Apps:
+        def __init__(self):
+            self.patch = None
+
+        def read_namespaced_deployment(self, name, namespace, **kwargs):
+            return deployment
+
+        def patch_namespaced_deployment(self, name, namespace, patch, **kwargs):
+            self.patch = patch
+
+    service = KubernetesService(mode='execute')
+    service._loaded = True
+    service._load_error = None
+    service._apps = Apps()
+    service._core = object()
+    service._clear_temporary_condition('checkout-api', 'ops-demo')
+    container = service._apps.patch['spec']['template']['spec']['containers'][0]
+    assert container == {'name': 'checkout-api', 'image': 'nginx:1.25-alpine', 'command': None, 'readinessProbe': None}

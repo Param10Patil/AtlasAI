@@ -157,7 +157,8 @@ class KubernetesService:
         deployment_observation = self._deployment(deployment, namespace)
         pod_observations = [self._pod(pod) for pod in pods[:20]]
         event_observations = [self._event(event, workload) for event in events if self._event_matches(event, workload)][-20:]
-        health = self._assess(deployment_observation, pod_observations)
+        service_available = self._service_available(namespace, workload)
+        health = self._assess(deployment_observation, pod_observations, service_available)
         return ClusterObservation(
             connection=ConnectionStatus.CONNECTED,
             namespace=namespace,
@@ -165,6 +166,7 @@ class KubernetesService:
             deployment=deployment_observation,
             pods=pod_observations,
             events=event_observations,
+            service_available=service_available,
             health=health,
         )
 
@@ -251,6 +253,8 @@ class KubernetesService:
                 self._apps.patch_namespaced_deployment(workload, namespace, {"spec": {"replicas": 1}}, _request_timeout=self._request_timeout_seconds)
             elif action == "rollback_deployment":
                 self._rollback(workload, namespace)
+            elif action == "clear_temporary_condition":
+                self._clear_temporary_condition(workload, namespace)
             else:
                 self._restart(workload, namespace)
             return True
@@ -298,6 +302,42 @@ class KubernetesService:
             except json.JSONDecodeError:
                 raise KubernetesUnavailable("recorded readiness target is invalid")
         self._apps.patch_namespaced_deployment(workload, namespace, {"spec": {"template": {"spec": {"containers": [container]}}}}, _request_timeout=self._request_timeout_seconds)
+
+    def _clear_temporary_condition(self, workload: str, namespace: str) -> None:
+        """Restore only the recorded healthy pod-template fields.
+
+        This is deliberately a Kubernetes API patch, not a shell command.  The
+        injection path records the original image, command, and readiness
+        probe as annotations; restoring those fields removes a known-safe
+        temporary demo condition while leaving unrelated deployment metadata
+        untouched.
+        """
+        deployment = self._apps.read_namespaced_deployment(workload, namespace, _request_timeout=self._request_timeout_seconds)
+        annotations = getattr(deployment.metadata, "annotations", None) or {}
+        container: dict[str, Any] = {"name": workload}
+        image = annotations.get("opspilot.io/healthy-image")
+        if image:
+            container["image"] = image
+        command_raw = annotations.get("opspilot.io/healthy-command")
+        if command_raw:
+            try:
+                container["command"] = json.loads(command_raw)
+            except json.JSONDecodeError as exc:
+                raise KubernetesUnavailable("recorded command target is invalid") from exc
+        readiness_raw = annotations.get("opspilot.io/healthy-readiness")
+        if readiness_raw:
+            try:
+                container["readinessProbe"] = json.loads(readiness_raw)
+            except json.JSONDecodeError as exc:
+                raise KubernetesUnavailable("recorded readiness target is invalid") from exc
+        if len(container) == 1:
+            raise KubernetesUnavailable("no recorded temporary condition is available")
+        self._apps.patch_namespaced_deployment(
+            workload,
+            namespace,
+            {"spec": {"template": {"spec": {"containers": [container]}}}},
+            _request_timeout=self._request_timeout_seconds,
+        )
 
     async def verify_health(self, target: str) -> bool:
         namespace, workload = self._target(target)
@@ -370,8 +410,28 @@ class KubernetesService:
         name = getattr(involved, "name", None)
         return not name or name == workload or name.startswith(f"{workload}-")
 
+    def _service_available(self, namespace: str, workload: str) -> bool | None:
+        """Read ready service endpoints when the approved Service exists.
+
+        Endpoint readiness is intentionally used instead of an in-cluster HTTP
+        request: Cloud Run can reach the Kubernetes API through the VPC path,
+        while it should not need a second service-network client or container.
+        A missing Service/API capability remains unknown rather than being
+        misreported as a control-plane outage.
+        """
+        try:
+            endpoints = self._core.read_namespaced_endpoints(workload, namespace, _request_timeout=self._request_timeout_seconds)
+        except self._api_exception as exc:
+            return False if getattr(exc, "status", None) == 404 else None
+        except AttributeError:
+            return None
+        except Exception:  # noqa: BLE001 - endpoint status is supplementary
+            return None
+        subsets = getattr(endpoints, "subsets", None) or []
+        return any(getattr(subset, "addresses", None) for subset in subsets)
+
     @staticmethod
-    def _assess(deployment: DeploymentObservation, pods: list[PodObservation]) -> HealthAssessment:
+    def _assess(deployment: DeploymentObservation, pods: list[PodObservation], service_available: bool | None = None) -> HealthAssessment:
         reasons: list[str] = []
         if deployment.desired_replicas <= 0:
             reasons.append("deployment has no desired replicas")
@@ -385,6 +445,8 @@ class KubernetesService:
                 reasons.append(f"pod {pod.name} is not ready ({state})")
             if pod.restarts > 0:
                 reasons.append(f"pod {pod.name} has {pod.restarts} restart(s)")
+        if service_available is False:
+            reasons.append("service has no ready endpoints")
         return HealthAssessment(status=HealthStatus.HEALTHY if not reasons else HealthStatus.DEGRADED, reasons=list(dict.fromkeys(reasons))[:8])
 
     @staticmethod

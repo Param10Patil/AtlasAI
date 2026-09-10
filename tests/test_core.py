@@ -19,7 +19,13 @@ from app.graph.workflow import InvestigationWorkflow
 from app.guardrails.contracts import GuardrailContext
 from app.guardrails.service import GuardrailService
 from app.mcp.server import MCPToolClient, MCPToolServer
-from app.models.schemas import AnalysisResult, Incident, RecommendedAction, Severity
+from app.models.schemas import (
+    AnalysisResult,
+    EvidenceItem,
+    Incident,
+    RecommendedAction,
+    Severity,
+)
 from app.rag.service import RAGService
 from app.remediation.contracts import RemediationContext, RemediationResult
 from app.remediation.service import RemediationAgent, SimulatedActionExecutor
@@ -82,6 +88,7 @@ async def test_workflow_uses_langgraph_or_declared_fallback():
     assert output.details.models['orchestrator'] in {'langgraph', 'sequential-fallback'}
     assert output.details.models['classifier'] == 'fallback'
     assert output.details.remediation['status'] == 'verified'
+    assert output.details.remediation['execution_preview']['execution_method'].startswith('MCP execute_safe_action')
 
 
 @pytest.mark.asyncio
@@ -203,6 +210,37 @@ async def test_deployment_failure_policy_overrides_stale_restart_recommendation(
     )
     assert result.status == 'verified'
     assert executor.executions == [('rollback_deployment', 'checkout-api')]
+
+
+@pytest.mark.asyncio
+async def test_remediation_preview_is_contextual_and_separates_rag_commands_from_execution():
+    evidence = EvidenceItem(
+        id='runbook-scale',
+        kind='runbook',
+        title='Replica recovery runbook',
+        excerpt='If capacity is constrained, use kubectl scale deployment checkout-api --replicas=1.',
+        score=0.91,
+    )
+    result = await RemediationAgent(SimulatedActionExecutor()).remediate(
+        RemediationContext(
+            incident_summary='checkout latency is elevated',
+            service='checkout-api',
+            category='performance_issue',
+            evidence=(evidence,),
+            recommended_actions=(RecommendedAction(
+                rank=1,
+                text='Scale the approved deployment to one replica.',
+                evidence_ids=['runbook-scale'],
+            ),),
+        ),
+        enabled=False,
+    )
+    assert result.status == 'awaiting_approval'
+    assert result.execution_preview is not None
+    assert result.execution_preview.action.value == 'scale_deployment'
+    assert result.execution_preview.target == 'checkout-api'
+    assert result.execution_preview.rag_commands == ['kubectl scale deployment checkout-api --replicas=1']
+    assert 'MCP execute_safe_action' in result.execution_preview.execution_method
 
 
 @pytest.mark.asyncio

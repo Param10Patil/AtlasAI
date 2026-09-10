@@ -81,6 +81,10 @@ class ClusterObservation(BaseModel):
     deployment: DeploymentObservation | None = None
     pods: list[PodObservation] = Field(default_factory=list, max_length=20)
     events: list[EventObservation] = Field(default_factory=list, max_length=20)
+    # Endpoint readiness is the lightweight service-availability signal that
+    # can be observed from the Kubernetes API without introducing an HTTP probe
+    # dependency into Cloud Run or the demo cluster.
+    service_available: bool | None = None
     health: HealthAssessment
     limitations: list[str] = Field(default_factory=list, max_length=5)
 
@@ -103,6 +107,8 @@ class ClusterObservation(BaseModel):
             facts.append(f"pod {pod.name} {state} {'ready' if pod.ready else 'not ready'} restarts {pod.restarts}")
         for event in self.events[:5]:
             facts.append(f"event {event.reason or 'unknown'} {event.message}".strip())
+        if self.service_available is not None:
+            facts.append(f"service endpoints {'available' if self.service_available else 'unavailable'}")
         facts.extend(self.health.reasons[:4])
         return "; ".join(facts)[:1800]
 

@@ -127,6 +127,7 @@ class InvestigationWorkflow:
                 probable_causes=tuple(triage.likely_causes),
                 evidence_ids=tuple(item.id for item in evidence.runbook_evidence),
                 recommended_actions=tuple(decision.result.recommended_actions) if decision.result else (),
+                evidence=tuple(evidence.runbook_evidence),
                 observation=state.get('observation'),
             )
             return {
@@ -201,6 +202,7 @@ class InvestigationWorkflow:
                     probable_causes=tuple(triage.likely_causes),
                     evidence_ids=tuple(item.id for item in knowledge.runbook_evidence),
                     recommended_actions=tuple(state['guardrail_decision'].result.recommended_actions) if state['guardrail_decision'].result else (),
+                    evidence=tuple(knowledge.runbook_evidence),
                     observation=incident.observation,
                 )
                 state['remediation'] = await self.remediation_agent.remediate(context, enabled=bool(state.get('remediation_enabled', self.remediation_enabled)))
