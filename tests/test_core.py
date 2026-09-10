@@ -241,6 +241,7 @@ async def test_remediation_preview_is_contextual_and_separates_rag_commands_from
     assert result.execution_preview.target == 'checkout-api'
     assert result.execution_preview.rag_commands == ['kubectl scale deployment checkout-api --replicas=1']
     assert 'MCP execute_safe_action' in result.execution_preview.execution_method
+    assert result.execution_preview.approval_required is True
 
 
 @pytest.mark.asyncio

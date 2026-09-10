@@ -31,6 +31,7 @@ class ExecutionPreview(BaseModel):
     rag_evidence: list[EvidenceItem] = Field(default_factory=list, max_length=3)
     rag_commands: list[str] = Field(default_factory=list, max_length=3)
     policy_result: str = Field(min_length=1, max_length=240)
+    approval_required: bool = False
 
 
 class RemediationContext(BaseModel):

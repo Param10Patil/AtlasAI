@@ -24,6 +24,15 @@ class HealthStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
+class EventPriority(str, Enum):
+    """Stable observer-side classification used by contextual event views."""
+
+    INCIDENT_CRITICAL = "incident_critical"
+    RECOVERY_CRITICAL = "recovery_critical"
+    CONTEXTUAL = "contextual"
+    ROUTINE = "routine"
+
+
 class PodObservation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -58,6 +67,7 @@ class EventObservation(BaseModel):
     message: str = Field(default="", max_length=800)
     involved_object: str | None = Field(default=None, max_length=120)
     observed_at: datetime | None = None
+    priority: EventPriority = EventPriority.CONTEXTUAL
 
 
 class HealthAssessment(BaseModel):

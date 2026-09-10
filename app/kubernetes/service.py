@@ -21,6 +21,7 @@ from app.kubernetes.contracts import (
     ConnectionStatus,
     DeploymentObservation,
     EventObservation,
+    EventPriority,
     HealthAssessment,
     HealthStatus,
     NamespaceSummary,
@@ -413,13 +414,29 @@ class KubernetesService:
         timestamp = getattr(value, "last_timestamp", None) or getattr(value, "event_time", None)
         if timestamp and not isinstance(timestamp, datetime):
             timestamp = None
+        reason = str(getattr(value, "reason", "") or "")
+        event_type = str(getattr(value, "type", "") or "")
+        message = str(getattr(value, "message", "") or "")
+        text = f"{reason} {event_type} {message}".lower()
+        if event_type.lower() in {"warning", "error"} or any(
+            token in text
+            for token in ("failed", "crashloop", "imagepull", "unhealthy", "backoff", "not ready", "probe", "denied")
+        ):
+            priority = EventPriority.INCIDENT_CRITICAL
+        elif any(token in text for token in ("available", "ready", "complete", "started", "healthy", "restored")):
+            priority = EventPriority.RECOVERY_CRITICAL
+        elif any(token in text for token in ("scalingreplicaset", "successfulcreate", "successfuldelete", "killing")):
+            priority = EventPriority.ROUTINE
+        else:
+            priority = EventPriority.CONTEXTUAL
         return EventObservation(
             name=str(getattr(getattr(value, "metadata", None), "name", "event")),
-            reason=getattr(value, "reason", None),
-            event_type=getattr(value, "type", None),
-            message=str(getattr(value, "message", "") or "")[:800],
+            reason=reason or None,
+            event_type=event_type or None,
+            message=message[:800],
             involved_object=getattr(involved, "name", None) or workload,
             observed_at=timestamp,
+            priority=priority,
         )
 
     @staticmethod

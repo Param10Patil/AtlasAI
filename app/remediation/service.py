@@ -140,6 +140,7 @@ class RemediationAgent:
             rag_evidence=evidence,
             rag_commands=commands[:3],
             policy_result='Allowlisted action; policy gate passed' if enabled else 'Allowlisted action; explicit operator approval required',
+            approval_required=not enabled,
         )
 
     async def remediate(self, context: RemediationContext, *, enabled: bool) -> RemediationResult:

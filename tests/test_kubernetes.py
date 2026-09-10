@@ -6,6 +6,7 @@ from app.kubernetes.contracts import (
     ClusterObservation,
     ConnectionStatus,
     DeploymentObservation,
+    EventPriority,
     HealthAssessment,
     HealthStatus,
     PodObservation,
@@ -79,6 +80,23 @@ def test_service_endpoint_read_is_distinct_from_control_plane_connection():
     assessed = KubernetesService._assess(_observation(HealthStatus.HEALTHY).deployment, [], False)
     assert assessed.status is HealthStatus.DEGRADED
     assert 'service has no ready endpoints' in assessed.reasons
+
+
+def test_kubernetes_events_receive_deterministic_priority_classification():
+    warning = SimpleNamespace(
+        metadata=SimpleNamespace(name='warning-event'),
+        involved_object=SimpleNamespace(name='checkout-api-1'),
+        reason='BackOff', type='Warning', message='Back-off restarting failed container',
+        last_timestamp=None, event_time=None,
+    )
+    routine = SimpleNamespace(
+        metadata=SimpleNamespace(name='routine-event'),
+        involved_object=SimpleNamespace(name='checkout-api'),
+        reason='SuccessfulCreate', type='Normal', message='Created pod',
+        last_timestamp=None, event_time=None,
+    )
+    assert KubernetesService._event(warning, 'checkout-api').priority is EventPriority.INCIDENT_CRITICAL
+    assert KubernetesService._event(routine, 'checkout-api').priority is EventPriority.ROUTINE
 
 
 def test_controlled_injection_removes_only_pods_present_before_the_fault():
