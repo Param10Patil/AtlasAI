@@ -5,7 +5,7 @@ metadata:
   namespace: ops-demo
 rules:
   - apiGroups: [""]
-    resources: ["pods", "events"]
+    resources: ["pods", "events", "endpoints"]
     verbs: ["get", "list", "watch", "delete"]
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets"]
