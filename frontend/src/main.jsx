@@ -209,7 +209,7 @@ function EventCards({ value, mode = 'current' }) {
     return priority === 'recovery_critical' || (recent && priority !== 'incident_critical');
   }).slice(0, 4);
   useEffect(() => {
-    document.querySelectorAll('.event-row details[open]').forEach((detail) => { detail.open = false; });
+      document.querySelectorAll('.event-row details[open], .how-know[open]').forEach((detail) => { detail.open = false; });
   }, [value, mode]);
   const row = ({ event, score }, index, technical = false) => {
     const reason = humanize(event.reason, 'Kubernetes event');
