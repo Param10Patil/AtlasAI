@@ -209,10 +209,15 @@ class KubernetesService:
 
     def _inject_sync(self, scenario: str) -> ClusterObservation:
         self._ensure_client()
-        if self._load_error or self._apps is None:
+        if self._load_error or self._apps is None or self._core is None:
             raise KubernetesUnavailable("Kubernetes is unavailable")
         try:
             deployment = self._apps.read_namespaced_deployment(self.workload, self.namespace, _request_timeout=self._request_timeout_seconds)
+            existing_pods = self._core.list_namespaced_pod(
+                self.namespace,
+                label_selector=f"app.kubernetes.io/name={self.workload}",
+                _request_timeout=self._request_timeout_seconds,
+            ).items
             annotations = dict(getattr(deployment.metadata, "annotations", None) or {})
             containers = getattr(getattr(deployment.spec, "template", None).spec, "containers", [])
             if containers:
@@ -230,6 +235,19 @@ class KubernetesService:
                 container_patch["readinessProbe"] = {"httpGet": {"path": "/opspilot-not-ready", "port": 80}, "periodSeconds": 2}
             patch["spec"] = {"template": {"spec": {"containers": [container_patch]}}}
             self._apps.patch_namespaced_deployment(self.workload, self.namespace, patch, _request_timeout=self._request_timeout_seconds)
+            # A one-replica rolling update can keep the old healthy pod serving
+            # while the sabotaged template is pending. Delete only pods that
+            # existed before this controlled change so endpoint readiness and
+            # the observed incident reflect the injected fault immediately.
+            for pod in existing_pods[:20]:
+                name = getattr(getattr(pod, "metadata", None), "name", None)
+                if name:
+                    self._core.delete_namespaced_pod(
+                        name,
+                        self.namespace,
+                        grace_period_seconds=1,
+                        _request_timeout=self._request_timeout_seconds,
+                    )
         except self._api_exception as exc:
             raise KubernetesUnavailable("controlled incident could not be injected") from exc
         return self._observe_sync(self.namespace, self.workload)

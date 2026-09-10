@@ -81,6 +81,49 @@ def test_service_endpoint_read_is_distinct_from_control_plane_connection():
     assert 'service has no ready endpoints' in assessed.reasons
 
 
+def test_controlled_injection_removes_only_pods_present_before_the_fault():
+    deployment = SimpleNamespace(
+        metadata=SimpleNamespace(annotations={}),
+        spec=SimpleNamespace(template=SimpleNamespace(spec=SimpleNamespace(
+            containers=[SimpleNamespace(image='nginx:1.25-alpine', command=None, readiness_probe=None)],
+        ))),
+    )
+    old_pod = SimpleNamespace(metadata=SimpleNamespace(name='checkout-api-old'))
+
+    class Apps:
+        def __init__(self):
+            self.patch = None
+
+        def read_namespaced_deployment(self, name, namespace, **kwargs):
+            return deployment
+
+        def patch_namespaced_deployment(self, name, namespace, patch, **kwargs):
+            self.patch = patch
+
+    class Core:
+        def __init__(self):
+            self.deleted = []
+
+        def list_namespaced_pod(self, namespace, label_selector, **kwargs):
+            return SimpleNamespace(items=[old_pod])
+
+        def delete_namespaced_pod(self, name, namespace, **kwargs):
+            self.deleted.append(name)
+
+    service = KubernetesService(mode='execute')
+    service._loaded = True
+    service._load_error = None
+    service._apps = Apps()
+    service._core = Core()
+    service._api_exception = Exception
+    expected = _observation(HealthStatus.DEGRADED)
+    service._observe_sync = lambda namespace, workload: expected
+    observed = service._inject_sync('deployment_failure')
+    assert observed is expected
+    assert service._core.deleted == ['checkout-api-old']
+    assert service._apps.patch['spec']['template']['spec']['containers'][0]['image'] == 'nginx:opspilot-image-does-not-exist'
+
+
 def test_health_parser_handles_kubernetes_like_objects():
     deployment = SimpleNamespace(
         metadata=SimpleNamespace(name='checkout-api', annotations={'deployment.kubernetes.io/revision': '2'}),
